@@ -1,10 +1,13 @@
 package com.unb.warehouse;
 
+import com.unb.warehouse.config.ConfigLoader;
 import jade.core.Profile;
 import jade.core.ProfileImpl;
+import jade.core.Runtime;
 import jade.wrapper.AgentController;
 import jade.wrapper.ContainerController;
-import jade.core.Runtime;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class App {
     public static void main(String[] args) throws Exception {
@@ -14,13 +17,16 @@ public class App {
         p.setParameter(Profile.MAIN_PORT, "1100");
         ContainerController cc = rt.createMainContainer(p);
 
-        // cria 3 agentes com lat/lon diferentes
-        AgentController a1 = cc.createNewAgent("wh1", "com.unb.warehouse.agents.WarehouseAgent", new Object[]{"wh1", "-23.55", "-46.63"});
-        AgentController a2 = cc.createNewAgent("wh2", "com.unb.warehouse.agents.WarehouseAgent", new Object[]{"wh2", "-22.90", "-43.20"});
-        AgentController a3 = cc.createNewAgent("wh3", "com.unb.warehouse.agents.WarehouseAgent", new Object[]{"wh3", "-19.92", "-43.94"});
+        JSONObject cfg = ConfigLoader.loadConfig();
+        JSONArray whs = cfg.getJSONArray("warehouses");
 
-        a1.start();
-        a2.start();
-        a3.start();
+        for (int i = 0; i < whs.length(); i++) {
+            JSONObject w = whs.getJSONObject(i);
+            String id = w.getString("id");
+            String lat = String.valueOf(w.getDouble("lat"));
+            String lon = String.valueOf(w.getDouble("lon"));
+            AgentController ac = cc.createNewAgent(id, "com.unb.warehouse.agents.WarehouseAgent", new Object[]{id, lat, lon});
+            ac.start();
+        }
     }
 }

@@ -1,18 +1,19 @@
 package com.unb.warehouse.behaviours;
 
+
+import com.unb.warehouse.agents.WarehouseAgent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import org.json.JSONObject;
-import org.json.JSONArray;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import com.unb.warehouse.agents.WarehouseAgent;
-import com.unb.warehouse.util.GeoUtil;
-
 public class HandleDecisionBehaviour extends CyclicBehaviour {
+    private static final Logger log = LoggerFactory.getLogger(HandleDecisionBehaviour.class);
     private static final long OFFER_WAIT_MS = 1500; // janela de coleta de propostas
 
     public HandleDecisionBehaviour(WarehouseAgent warehouseAgent) {
@@ -20,25 +21,21 @@ public class HandleDecisionBehaviour extends CyclicBehaviour {
 
     @Override
     public void action() {
-        // coleta mensagens PROPOSE relacionadas a um CFP recente
         ACLMessage msg = myAgent.receive(MessageTemplate.MatchPerformative(ACLMessage.PROPOSE));
         if (msg != null) {
-            // armazena e espera uma pequena janela para coletar mais
             List<ACLMessage> collected = new ArrayList<>();
             collected.add(msg);
             long start = System.currentTimeMillis();
             while (System.currentTimeMillis() - start < OFFER_WAIT_MS) {
                 ACLMessage m = myAgent.receive(MessageTemplate.MatchPerformative(ACLMessage.PROPOSE));
                 if (m != null) collected.add(m);
-                else block(100);
+                else block(50);
             }
 
-            // avalia propostas
-            double bestScore = -1;
             ACLMessage best = null;
+            double bestScore = Double.NEGATIVE_INFINITY;
             for (ACLMessage p : collected) {
-                double score = getScore(p);
-
+                double score = scoreFor(p);
                 if (score > bestScore) {
                     bestScore = score;
                     best = p;
@@ -55,32 +52,36 @@ public class HandleDecisionBehaviour extends CyclicBehaviour {
                 accept.setContent(payload.toString());
                 myAgent.send(accept);
 
-                // envia rejeições para os demais
-                for (ACLMessage p : collected) {
+                // reject others
+                for (ACLMessage p : collected)
                     if (p != best) {
                         ACLMessage rej = p.createReply();
                         rej.setPerformative(ACLMessage.REJECT_PROPOSAL);
                         myAgent.send(rej);
                     }
-                }
-
-                System.out.println(myAgent.getLocalName() + " accepted offer from " + best.getSender().getLocalName());
+                log.info("{} accepted offer from {} score={}", myAgent.getLocalName(), best.getSender().getLocalName(), bestScore);
             }
         } else {
             block();
         }
     }
 
-    private static double getScore(ACLMessage p) {
+    private double scoreFor(ACLMessage p) {
         JSONObject offer = new JSONObject(p.getContent());
         double cost = offer.getDouble("unitCost");
         double time = offer.getDouble("leadTimeHours");
         double distance = offer.getDouble("distanceKm");
         double reliability = offer.getDouble("reliability");
 
-        // pesos (configuráveis)
+        // weights loaded from config could be injected; hardcoded sample here
         double wCost = 0.5, wTime = 0.25, wDistance = 0.15, wReliability = 0.1;
-        double score = (wCost * (1.0 / cost)) + (wTime * (1.0 / time)) + (wDistance * (1.0 / (distance + 1))) + (wReliability * reliability);
-        return score;
+
+        // normalized sub-scores: higher is better
+        double scCost = 1.0 / cost; // lower cost => higher score
+        double scTime = 1.0 / time; // lower time => higher
+        double scDist = 1.0 / (distance + 1); // avoid div by zero
+        double scRel = reliability; // already [0..1]
+
+        return wCost * scCost + wTime * scTime + wDistance * scDist + wReliability * scRel;
     }
 }

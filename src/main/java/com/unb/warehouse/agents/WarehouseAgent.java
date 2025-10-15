@@ -1,81 +1,39 @@
 package com.unb.warehouse.agents;
 
-import jade.core.Agent;
-
-import java.util.HashMap;
-import java.util.Map;
-
-import com.unb.warehouse.behaviours.StockMonitorBehaviour;
-import com.unb.warehouse.behaviours.OfferResponderBehaviour;
 import com.unb.warehouse.behaviours.HandleDecisionBehaviour;
+import com.unb.warehouse.behaviours.OfferResponderBehaviour;
+import com.unb.warehouse.behaviours.StockMonitorBehaviour;
+import com.unb.warehouse.model.WarehouseModel;
+import jade.core.Agent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WarehouseAgent extends Agent {
-    private final Map<String, Integer> inventory = new HashMap<>();
-    private Map<String, Integer> reserved = new HashMap<>();
-    private double lat;
-    private double lon;
-    private String id;
+    private static final Logger log = LoggerFactory.getLogger(WarehouseAgent.class);
+    private WarehouseModel model;
+
 
     @Override
     protected void setup() {
         Object[] args = getArguments();
-        this.id = args != null && args.length > 0 ? (String) args[0] : getLocalName();
-        this.lat = args != null && args.length > 1 ? Double.parseDouble((String) args[1]) : 0.0;
-        this.lon = args != null && args.length > 2 ? Double.parseDouble((String) args[2]) : 0.0;
+        String id = args != null && args.length > 0 ? (String) args[0] : getLocalName();
+        double lat = args != null && args.length > 1 ? Double.parseDouble((String) args[1]) : 0.0;
+        double lon = args != null && args.length > 2 ? Double.parseDouble((String) args[2]) : 0.0;
 
-        // inventário exemplo
-        inventory.put("SKU-123", 100);
-        inventory.put("SKU-456", 500);
 
-        // behaviours
-        addBehaviour(new StockMonitorBehaviour(this, 5000)); // tick 5s
+        model = new WarehouseModel(id, lat, lon); // initial values will be overridden by config loader in App; but keep defaults
+        model.setBaseCost(3.0);
+        model.setStock("SKU-123", 100);
+        model.setStock("SKU-456", 500);
+
+        addBehaviour(new StockMonitorBehaviour(this, 5000));
         addBehaviour(new OfferResponderBehaviour(this));
         addBehaviour(new HandleDecisionBehaviour(this));
 
-
-        System.out.println(getLocalName() + " ready. coords=" + lat + "," + lon);
+        log.info("{} ready. coords={},{} stock(SKU-123)={} baseCost={}", id, lat, lon, model.getStock("SKU-123"), model.getBaseCost());
     }
 
-    // getters/setters simples
-    public int getAvailable(String sku) {
-        return inventory.getOrDefault(sku, 0) - reserved.getOrDefault(sku, 0);
-    }
-
-    public boolean reserve(String sku, int qty) {
-        synchronized (inventory) {
-            int avail = getAvailable(sku);
-            if (avail >= qty) {
-                reserved.put(sku, reserved.getOrDefault(sku, 0) + qty);
-                return true;
-            }
-            return false;
-        }
-    }
-
-    public void confirmTransferOut(String sku, int qty) {
-        synchronized (inventory) {
-            int cur = inventory.getOrDefault(sku, 0);
-            inventory.put(sku, Math.max(0, cur - qty));
-            int res = reserved.getOrDefault(sku, 0) - qty;
-            reserved.put(sku, Math.max(0, res));
-        }
-    }
-
-    public void receiveTransfer(String sku, int qty) {
-        synchronized (inventory) {
-            inventory.put(sku, inventory.getOrDefault(sku, 0) + qty);
-        }
-    }
-
-    public String getWarehouseId(){
-        return id;
-    }
-
-    public double getLat() {
-        return lat;
-    }
-
-    public double getLon() {
-        return lon;
+    public WarehouseModel getModel() {
+        return model;
     }
 }

@@ -1,0 +1,40 @@
+{
+  "weights": {
+    "cost": 0.5,
+    "time": 0.25,
+    "distance": 0.15,
+    "reliability": 0.1
+  },
+  "warehouses": [
+    {
+      "id": "wh1",
+      "lat": -23.55,
+      "lon": -46.63,
+      "stock": {
+        "SKU-123": 100,
+        "SKU-456": 500
+      },
+      "baseCost": 3.0
+    },
+    {
+      "id": "wh2",
+      "lat": -22.90,
+      "lon": -43.20,
+      "stock": {
+        "SKU-123": 100,
+        "SKU-456": 500
+      },
+      "baseCost": 3.0
+    },
+    {
+      "id": "wh3",
+      "lat": -19.92,
+      "lon": -43.94,
+      "stock": {
+        "SKU-123": 100,
+        "SKU-456": 500
+      },
+      "baseCost": 3.0
+    }
+  ]
+}
