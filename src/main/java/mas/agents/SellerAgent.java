@@ -7,7 +7,7 @@ import java.util.List;
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.FSMBehaviour;
-import jade.core.behaviours.WakerBehaviour;
+import jade.core.behaviours.OneShotBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import mas.models.Bid;
@@ -21,42 +21,48 @@ public class SellerAgent extends Agent {
     private static final String STATE_WAIT_FOR_RESPONSE = "WaitForResponse";
     private static final String STATE_EVALUATE_COUNTER = "EvaluateCounterProposal";
     private static final String STATE_END_NEGOTIATION = "EndNegotiation";
+    private static final String STATE_WAIT_FOR_REQUEST = "WaitForRequest";
 
     private AID buyerAgent;
 
     protected void setup() {
         System.out.println("Seller Agent " + getAID().getName() + " is ready.");
-        buyerAgent = new AID("buyer1", AID.ISLOCALNAME); // Assume o nome do comprador
+        
 
-        addBehaviour(new WakerBehaviour(this, 15000) {
-            protected void onWake() {
-                System.out.println("Seller: Woke up, starting negotiation...");
-                
-                // A FSM da negociação é criada e adicionada AQUI, após o atraso
-                FSMBehaviour fsm = new FSMBehaviour(myAgent) {
-                    public int onEnd() {
-                        System.out.println("Seller FSM behaviour finished.");
-                        return super.onEnd();
-                    }
-                };
+        FSMBehaviour fsm = new FSMBehaviour(this) {
+            public int onEnd() {
+                System.out.println("Seller FSM finished for " + getAID().getName());
+                return super.onEnd();
+            }
+        };
 
-                // REGISTRA OS ESTADOS
-                fsm.registerFirstState(new SendInitialProposal(), STATE_SEND_INITIAL_PROPOSAL);
-                fsm.registerState(new WaitForResponse(SellerAgent.this, 5000), STATE_WAIT_FOR_RESPONSE);
-                fsm.registerState(new EvaluateCounterProposal(), STATE_EVALUATE_COUNTER);
-                fsm.registerLastState(new EndNegotiation(), STATE_END_NEGOTIATION);
+        // REGISTRA OS ESTADOS
+        fsm.registerFirstState(new WaitForRequest(), STATE_WAIT_FOR_REQUEST);
+        fsm.registerState(new SendInitialProposal(), STATE_SEND_INITIAL_PROPOSAL);
+        fsm.registerState(new WaitForResponse(this, 10000), STATE_WAIT_FOR_RESPONSE);
+        fsm.registerState(new EvaluateCounterProposal(), STATE_EVALUATE_COUNTER);
+        fsm.registerLastState(new EndNegotiation(), STATE_END_NEGOTIATION);
 
-                // REGISTRA AS TRANSIÇÕES
-                fsm.registerDefaultTransition(STATE_SEND_INITIAL_PROPOSAL, STATE_WAIT_FOR_RESPONSE);
-                fsm.registerTransition(STATE_WAIT_FOR_RESPONSE, STATE_END_NEGOTIATION, 0); // Acordo aceito ou timeout
-                fsm.registerTransition(STATE_WAIT_FOR_RESPONSE, STATE_EVALUATE_COUNTER, 1); // Contraproposta recebida
-                fsm.registerDefaultTransition(STATE_EVALUATE_COUNTER, STATE_END_NEGOTIATION); // Simplificado: sempre termina após contraproposta
+        // REGISTRA AS TRANSIÇÕES
+        fsm.registerDefaultTransition(STATE_WAIT_FOR_REQUEST, STATE_SEND_INITIAL_PROPOSAL);
+        fsm.registerDefaultTransition(STATE_SEND_INITIAL_PROPOSAL, STATE_WAIT_FOR_RESPONSE);
+        fsm.registerTransition(STATE_WAIT_FOR_RESPONSE, STATE_END_NEGOTIATION, 0);
+        fsm.registerTransition(STATE_WAIT_FOR_RESPONSE, STATE_EVALUATE_COUNTER, 1);
+        fsm.registerDefaultTransition(STATE_EVALUATE_COUNTER, STATE_END_NEGOTIATION);
 
-                addBehaviour(fsm);
-        }
-        });
+        addBehaviour(fsm);
     }
 
+    private class WaitForRequest extends OneShotBehaviour {
+        public void action() {
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
+            ACLMessage msg = myAgent.blockingReceive(mt); // Espera bloqueado até receber
+            
+            buyerAgent = msg.getSender();
+            System.out.println(getAID().getName() + ": Received request from " + buyerAgent.getName());
+        }
+    }
+        
     // --- CLASSES INTERNAS PARA CADA ESTADO DA FSM ---
 
     private class SendInitialProposal extends jade.core.behaviours.OneShotBehaviour {

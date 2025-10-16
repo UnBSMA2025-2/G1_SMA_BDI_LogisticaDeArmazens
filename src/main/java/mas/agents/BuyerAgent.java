@@ -1,8 +1,13 @@
 package mas.agents;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.FSMBehaviour;
+import jade.core.behaviours.OneShotBehaviour;
+import jade.core.behaviours.WakerBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.lang.acl.UnreadableException;
@@ -11,10 +16,6 @@ import mas.logic.EvaluationService.IssueParameters;
 import mas.logic.EvaluationService.IssueType;
 import mas.models.Bid;
 import mas.models.Proposal;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 public class BuyerAgent extends Agent {
     // Nomes dos estados
@@ -25,43 +26,81 @@ public class BuyerAgent extends Agent {
     private static final String STATE_END_NEGOTIATION = "EndNegotiation";
 
     private AID sellerAgent;
+    private AID coordinatorAgent;
     private EvaluationService evalService;
     private Map<String, Double> weights;
     private Map<String, IssueParameters> issueParams;
     private ACLMessage receivedProposal;
     private double acceptanceThreshold = 0.7; // Limiar de aceitação
+    private static final String STATE_SEND_REQUEST = "SendRequest";
 
     protected void setup() {
         System.out.println("Buyer Agent " + getAID().getName() + " is ready.");
-        sellerAgent = new AID("seller1", AID.ISLOCALNAME);
+
+        // Recebe argumentos: [0] = AID do vendedor, [1] = AID do coordenador
+        Object[] args = getArguments();
+        if (args != null && args.length > 1) {
+            sellerAgent = (AID) args[0];
+            coordinatorAgent = (AID) args[1];
+            System.out.println(getName() + ": Assigned seller is " + sellerAgent.getName());
+        } else {
+            doDelete(); return;
+        }
 
         // Configuração das preferências do comprador
         setupBuyerPreferences();
 
-        FSMBehaviour fsm = new FSMBehaviour(this) {
-            public int onEnd() {
-                System.out.println("Buyer FSM behaviour finished.");
-                return super.onEnd();
+        addBehaviour(new WakerBehaviour(this, 20000) {
+            protected void onWake() {
+                FSMBehaviour fsm = new FSMBehaviour(myAgent) {
+                    public int onEnd() {
+                        System.out.println("Buyer FSM finished for " + sellerAgent.getName());
+                        myAgent.addBehaviour(new InformCoordinatorDone());
+                        return super.onEnd();
+                    }
+                };
+
+
+                // REGISTRA OS ESTADOS
+                fsm.registerFirstState(new SendRequest(), STATE_SEND_REQUEST);
+                fsm.registerState(new WaitForProposal(myAgent, 10000), STATE_WAIT_FOR_PROPOSAL);
+                fsm.registerState(new EvaluateProposal(), STATE_EVALUATE_PROPOSAL);
+                fsm.registerState(new AcceptOffer(), STATE_ACCEPT_OFFER);
+                fsm.registerState(new MakeCounterOffer(), STATE_MAKE_COUNTER_OFFER);
+                fsm.registerLastState(new EndNegotiation(), STATE_END_NEGOTIATION);
+                
+                // REGISTRA AS TRANSIÇÕES
+                fsm.registerDefaultTransition(STATE_SEND_REQUEST, STATE_WAIT_FOR_PROPOSAL);
+                fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_EVALUATE_PROPOSAL, 1);
+                fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_END_NEGOTIATION, 0);
+                fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_ACCEPT_OFFER, 1);
+                fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_MAKE_COUNTER_OFFER, 0);
+                fsm.registerDefaultTransition(STATE_ACCEPT_OFFER, STATE_END_NEGOTIATION);
+                fsm.registerDefaultTransition(STATE_MAKE_COUNTER_OFFER, STATE_END_NEGOTIATION);
+
+                myAgent.addBehaviour(fsm);
             }
-        };
-
-        // REGISTRA OS ESTADOS
-        fsm.registerFirstState(new WaitForProposal(this, 5000), STATE_WAIT_FOR_PROPOSAL);
-        fsm.registerState(new EvaluateProposal(), STATE_EVALUATE_PROPOSAL);
-        fsm.registerState(new AcceptOffer(), STATE_ACCEPT_OFFER);
-        fsm.registerState(new MakeCounterOffer(), STATE_MAKE_COUNTER_OFFER);
-        fsm.registerLastState(new EndNegotiation(), STATE_END_NEGOTIATION);
-        
-        // REGISTRA AS TRANSIÇÕES
-        fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_EVALUATE_PROPOSAL, 1); // Proposta recebida
-        fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_END_NEGOTIATION, 0);  // Timeout
-        fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_ACCEPT_OFFER, 1); // Utilidade > limiar
-        fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_MAKE_COUNTER_OFFER, 0); // Utilidade <= limiar
-        fsm.registerDefaultTransition(STATE_ACCEPT_OFFER, STATE_END_NEGOTIATION);
-        fsm.registerDefaultTransition(STATE_MAKE_COUNTER_OFFER, STATE_END_NEGOTIATION); // Simplificado
-
-        addBehaviour(fsm);
+        });
     }
+
+    private class SendRequest extends OneShotBehaviour {
+        public void action() {
+            System.out.println(getName() + ": Sending call for proposal to " + sellerAgent.getName());
+            ACLMessage cfp = new ACLMessage(ACLMessage.REQUEST);
+            cfp.addReceiver(sellerAgent);
+            cfp.setContent("send-proposal");
+            myAgent.send(cfp);
+        }
+    }
+
+    private class InformCoordinatorDone extends OneShotBehaviour {
+        public void action() {
+            ACLMessage doneMsg = new ACLMessage(ACLMessage.INFORM);
+            doneMsg.addReceiver(coordinatorAgent);
+            doneMsg.setContent("NegotiationFinished");
+            myAgent.send(doneMsg);
+        }
+    }   
 
     private void setupBuyerPreferences() {
         this.evalService = new EvaluationService();
@@ -85,8 +124,17 @@ public class BuyerAgent extends Agent {
         // (Código similar ao WaitForResponse do Seller, mas espera por PROPOSE)
         private boolean done = false;
         private int transition = 0;
-        public WaitForProposal(Agent a, long timeout) { /* ... construtor ... */ }
-        public void onStart() { /* ... */ }
+        private Agent agent;
+        private long timeout;
+        private long startTime;
+
+        public WaitForProposal(Agent a, long timeout) {
+            this.agent = a;
+            this.timeout = timeout;
+        }
+        public void onStart() {
+            startTime = System.currentTimeMillis();
+        }
         
         public void action() {
             MessageTemplate template = MessageTemplate.MatchPerformative(ACLMessage.PROPOSE);

@@ -37,3 +37,9 @@
 
 # Fase 4
 
+- Introduzir o CoordinatorAgent para gerenciar múltiplas negociações paralelas
+- CA: cria um Agente Comprador (BA) para cada fornecedor, controlando as interações e, ao final, seleciona os fornecedores vencedores com base nos resultados
+- SA: alterado de proativo para reativo
+- BA: envia uma mensagem REQUEST ("Call for Proposal") para o Vendedor que lhe foi designado
+
+![image](assets/sniffer_fase_4.png)

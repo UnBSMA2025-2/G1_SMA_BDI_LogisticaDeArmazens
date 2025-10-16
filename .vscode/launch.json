@@ -10,14 +10,14 @@
         },
         {
             "type": "java",
-            "name": "Run JADE (Phase 3)",
+            "name": "Run JADE (Phase 4)",
             "request": "launch",
             "mainClass": "jade.Boot",
             "projectName": "agentes-negociacao",
             "args": [
                 "-gui",
                 "-agents",
-                "seller1:mas.agents.SellerAgent;buyer1:mas.agents.BuyerAgent"
+                "ca:mas.agents.CoordinatorAgent;s1:mas.agents.SellerAgent;s2:mas.agents.SellerAgent;s3:mas.agents.SellerAgent"
             ]
         }
     ]
