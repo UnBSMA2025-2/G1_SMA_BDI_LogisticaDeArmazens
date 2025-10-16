@@ -11,11 +11,54 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Agent that represents a warehouse in the multi-agent system.
+ *
+ * <p>This agent:
+ * <ul>
+ *   <li>Initializes a {@link WarehouseModel} from a JSON configuration passed as an argument.</li>
+ *   <li>Registers a "warehouse-service" with the Directory Facilitator (DF).</li>
+ *   <li>Adds behaviours that monitor stock, respond to offers, make decisions, accept offers, and finalize transactions.</li>
+ * </ul>
+ *
+ * <p>Expected agent arguments (in this order):
+ * <ol>
+ *   <li>String: JSON configuration for the warehouse (id, lat, lon, baseCost, initialStock, reorderPolicy).</li>
+ *   <li>String: JSON configuration for decision weights used by {@code HandleDecisionBehaviour}.</li>
+ * </ol>
+ *
+ * @author AlefMemTav
+ */
 public class WarehouseAgent extends Agent {
     private static final Logger log = LoggerFactory.getLogger(WarehouseAgent.class);
+
+    /**
+     * Domain model that holds warehouse state such as id, coordinates, stock levels and base cost.
+     */
     private WarehouseModel model;
+
+    /**
+     * Decision weights parsed from the second agent argument. Used by decision-making behaviours.
+     */
     private JSONObject decisionWeights;
 
+    /**
+     * Agent setup lifecycle method.
+     *
+     * <p>The method expects two arguments provided to the agent on startup:
+     * the warehouse JSON configuration and the decision weights JSON string.
+     * If arguments are missing or invalid the agent deregisters itself.
+     *
+     * <p>After initializing the {@link WarehouseModel} it registers its service with the DF and
+     * attaches the following behaviours:
+     * <ul>
+     *   <li>{@link StockMonitorBehaviour}</li>
+     *   <li>{@link OfferResponderBehaviour}</li>
+     *   <li>{@link HandleDecisionBehaviour}</li>
+     *   <li>{@link HandleAcceptanceBehaviour}</li>
+     *   <li>{@link HandleTransactionFinalizationBehaviour}</li>
+     * </ul>
+     */
     @Override
     protected void setup() {
         Object[] args = getArguments();
@@ -53,6 +96,14 @@ public class WarehouseAgent extends Agent {
                 model.getId(), model.getLat(), model.getLon(), model.getStock("SKU-123"), model.getBaseCost());
     }
 
+    /**
+     * Registers this agent's service with the Directory Facilitator (DF).
+     *
+     * <p>The service type is \"warehouse-service\" and the service name is formed by
+     * appending \"-warehouse-service\" to the agent local name.
+     *
+     * <p>Logs success or failure to the configured logger.
+     */
     private void registerService() {
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(getAID());
@@ -68,6 +119,11 @@ public class WarehouseAgent extends Agent {
         }
     }
 
+    /**
+     * Agent takedown lifecycle method.
+     *
+     * <p>Attempts to deregister the agent from the DF and logs the outcome.
+     */
     @Override
     protected void takeDown() {
         try {
