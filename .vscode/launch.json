@@ -1,0 +1,13 @@
+// .vscode/launch.json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Run JADE",
+      "request": "launch",
+      "mainClass": "jade.Boot",
+      "args": ["-gui", "-agents", "dummy:agents.DummyAgent"]
+    }
+  ]
+}

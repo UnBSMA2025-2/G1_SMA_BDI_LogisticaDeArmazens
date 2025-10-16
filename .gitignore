@@ -1,0 +1,11 @@
+APDescription.txt
+MTPs-Main-Container.txt
+*.log
+*.class
+*.jar
+*.war
+*.ear
+.vscode/*
+!.vscode/launch.json
+.DS_Store
+
