@@ -4,6 +4,10 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### JADE ###
+*APDescription.txt
+*MTPs-Main-Container.txt
+
 ### STS ###
 .apt_generated
 .classpath
