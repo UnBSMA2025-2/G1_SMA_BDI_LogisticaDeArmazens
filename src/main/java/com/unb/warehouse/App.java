@@ -17,15 +17,17 @@ public class App {
         p.setParameter(Profile.MAIN_PORT, "1100");
         ContainerController cc = rt.createMainContainer(p);
 
-        JSONObject cfg = ConfigLoader.loadConfig();
-        JSONArray whs = cfg.getJSONArray("warehouses");
+        JSONObject config = ConfigLoader.loadConfig();
+        JSONArray warehousesConfig = config.getJSONArray("warehouses");
+        JSONObject decisionWeights = config.getJSONObject("decisionWeights");
 
-        for (int i = 0; i < whs.length(); i++) {
-            JSONObject w = whs.getJSONObject(i);
-            String id = w.getString("id");
-            String lat = String.valueOf(w.getDouble("lat"));
-            String lon = String.valueOf(w.getDouble("lon"));
-            AgentController ac = cc.createNewAgent(id, "com.unb.warehouse.agents.WarehouseAgent", new Object[]{id, lat, lon});
+        for (int i = 0; i < warehousesConfig.length(); i++) {
+            JSONObject whConfig = warehousesConfig.getJSONObject(i);
+            String id = whConfig.getString("id");
+
+            // Pass the specific config for the warehouse and the decision weights
+            Object[] agentArgs = new Object[]{whConfig.toString(), decisionWeights.toString()};
+            AgentController ac = cc.createNewAgent(id, "com.unb.warehouse.agents.WarehouseAgent", agentArgs);
             ac.start();
         }
     }

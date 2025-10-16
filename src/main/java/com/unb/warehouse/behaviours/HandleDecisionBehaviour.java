@@ -1,7 +1,7 @@
 package com.unb.warehouse.behaviours;
 
-
-import com.unb.warehouse.agents.WarehouseAgent;
+import com.unb.warehouse.model.WarehouseModel;
+import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
@@ -14,52 +14,67 @@ import java.util.List;
 
 public class HandleDecisionBehaviour extends CyclicBehaviour {
     private static final Logger log = LoggerFactory.getLogger(HandleDecisionBehaviour.class);
-    private static final long OFFER_WAIT_MS = 1500; // janela de coleta de propostas
+    private static final long OFFER_WAIT_MS = 2000; // Window to collect proposals
 
-    public HandleDecisionBehaviour(WarehouseAgent warehouseAgent) {
+    private final WarehouseModel model;
+    private final JSONObject weights;
+
+    public HandleDecisionBehaviour(Agent a, WarehouseModel model, JSONObject weights) {
+        super(a);
+        this.model = model;
+        this.weights = weights;
     }
 
     @Override
     public void action() {
-        ACLMessage msg = myAgent.receive(MessageTemplate.MatchPerformative(ACLMessage.PROPOSE));
-        if (msg != null) {
-            List<ACLMessage> collected = new ArrayList<>();
-            collected.add(msg);
-            long start = System.currentTimeMillis();
-            while (System.currentTimeMillis() - start < OFFER_WAIT_MS) {
-                ACLMessage m = myAgent.receive(MessageTemplate.MatchPerformative(ACLMessage.PROPOSE));
-                if (m != null) collected.add(m);
-                else block(50);
-            }
+        MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.PROPOSE);
+        ACLMessage firstProposal = myAgent.receive(mt);
 
-            ACLMessage best = null;
-            double bestScore = Double.NEGATIVE_INFINITY;
-            for (ACLMessage p : collected) {
-                double score = scoreFor(p);
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = p;
+        if (firstProposal != null) {
+            List<ACLMessage> collected = new ArrayList<>();
+            collected.add(firstProposal);
+
+            // Collect all proposals within the time window
+            long startTime = System.currentTimeMillis();
+            while (System.currentTimeMillis() - startTime < OFFER_WAIT_MS) {
+                ACLMessage proposal = myAgent.receive(mt);
+                if (proposal != null) {
+                    collected.add(proposal);
+                } else {
+                    block(50); // Wait a bit for more messages
                 }
             }
 
-            if (best != null) {
-                JSONObject chosen = new JSONObject(best.getContent());
-                ACLMessage accept = best.createReply();
+            ACLMessage bestOffer = null;
+            double bestScore = Double.NEGATIVE_INFINITY;
+
+            for (ACLMessage proposal : collected) {
+                double score = scoreFor(proposal);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestOffer = proposal;
+                }
+            }
+
+            if (bestOffer != null) {
+                // Accept the best offer
+                JSONObject chosenOffer = new JSONObject(bestOffer.getContent());
+                ACLMessage accept = bestOffer.createReply();
                 accept.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
-                JSONObject payload = new JSONObject();
-                payload.put("productId", chosen.getString("productId"));
-                payload.put("qty", Math.min(chosen.getInt("qtyAvailable"), 200));
-                accept.setContent(payload.toString());
+                // Content of acceptance is the original offer that is being accepted
+                accept.setContent(bestOffer.getContent());
                 myAgent.send(accept);
 
-                // reject others
-                for (ACLMessage p : collected)
-                    if (p != best) {
-                        ACLMessage rej = p.createReply();
-                        rej.setPerformative(ACLMessage.REJECT_PROPOSAL);
-                        myAgent.send(rej);
+                // Reject all other offers
+                for (ACLMessage proposal : collected) {
+                    if (proposal != bestOffer) {
+                        ACLMessage reject = proposal.createReply();
+                        reject.setPerformative(ACLMessage.REJECT_PROPOSAL);
+                        myAgent.send(reject);
                     }
-                log.info("{} accepted offer from {} score={}", myAgent.getLocalName(), best.getSender().getLocalName(), bestScore);
+                }
+                log.info("{} accepted offer from {} (score: {:.4f}). Rejecting {} others.",
+                        myAgent.getLocalName(), bestOffer.getSender().getLocalName(), bestScore, collected.size() - 1);
             }
         } else {
             block();
@@ -73,14 +88,17 @@ public class HandleDecisionBehaviour extends CyclicBehaviour {
         double distance = offer.getDouble("distanceKm");
         double reliability = offer.getDouble("reliability");
 
-        // weights loaded from config could be injected; hardcoded sample here
-        double wCost = 0.5, wTime = 0.25, wDistance = 0.15, wReliability = 0.1;
+        // Weights loaded from config
+        double wCost = weights.getDouble("cost");
+        double wTime = weights.getDouble("time");
+        double wDistance = weights.getDouble("distance");
+        double wReliability = weights.getDouble("reliability");
 
-        // normalized sub-scores: higher is better
-        double scCost = 1.0 / cost; // lower cost => higher score
-        double scTime = 1.0 / time; // lower time => higher
+        // Normalized sub-scores: higher is better
+        double scCost = 1.0 / (cost + 0.001); // lower cost => higher score
+        double scTime = 1.0 / (time + 0.001); // lower time => higher
         double scDist = 1.0 / (distance + 1); // avoid div by zero
-        double scRel = reliability; // already [0..1]
+        double scRel = reliability;
 
         return wCost * scCost + wTime * scTime + wDistance * scDist + wReliability * scRel;
     }

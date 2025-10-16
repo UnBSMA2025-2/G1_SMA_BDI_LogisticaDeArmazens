@@ -1,5 +1,5 @@
 {
-  "weights": {
+  "decisionWeights": {
     "cost": 0.5,
     "time": 0.25,
     "distance": 0.15,
@@ -10,31 +10,46 @@
       "id": "wh1",
       "lat": -23.55,
       "lon": -46.63,
-      "stock": {
-        "SKU-123": 100,
+      "baseCost": 3.0,
+      "initialStock": {
+        "SKU-123": 40,
         "SKU-456": 500
       },
-      "baseCost": 3.0
+      "reorderPolicy": {
+        "sku": "SKU-123",
+        "triggerLevel": 50,
+        "reorderQuantity": 200
+      }
     },
     {
       "id": "wh2",
       "lat": -22.90,
       "lon": -43.20,
-      "stock": {
-        "SKU-123": 100,
-        "SKU-456": 500
+      "baseCost": 3.2,
+      "initialStock": {
+        "SKU-123": 80,
+        "SKU-456": 600
       },
-      "baseCost": 3.0
+      "reorderPolicy": {
+        "sku": "SKU-123",
+        "triggerLevel": 60,
+        "reorderQuantity": 250
+      }
     },
     {
       "id": "wh3",
       "lat": -19.92,
       "lon": -43.94,
-      "stock": {
-        "SKU-123": 100,
-        "SKU-456": 500
+      "baseCost": 2.8,
+      "initialStock": {
+        "SKU-123": 120,
+        "SKU-456": 400
       },
-      "baseCost": 3.0
+      "reorderPolicy": {
+        "sku": "SKU-123",
+        "triggerLevel": 40,
+        "reorderQuantity": 180
+      }
     }
   ]
 }

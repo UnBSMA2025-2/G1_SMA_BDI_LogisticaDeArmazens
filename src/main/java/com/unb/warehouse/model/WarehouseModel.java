@@ -61,6 +61,13 @@ public class WarehouseModel {
         }
     }
 
+    public void releaseReservation(String sku, int qty) {
+        synchronized (inventory) {
+            int currentReserved = reserved.getOrDefault(sku, 0);
+            reserved.put(sku, Math.max(0, currentReserved - qty));
+        }
+    }
+
     public void confirmOut(String sku, int qty) {
         synchronized (inventory) {
             inventory.put(sku, Math.max(0, getStock(sku) - qty));
