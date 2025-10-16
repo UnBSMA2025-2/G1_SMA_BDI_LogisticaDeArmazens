@@ -8,4 +8,5 @@ MTPs-Main-Container.txt
 .vscode/*
 !.vscode/launch.json
 .DS_Store
+/target/
 

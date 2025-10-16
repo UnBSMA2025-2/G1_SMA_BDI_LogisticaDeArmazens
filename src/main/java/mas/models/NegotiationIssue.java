@@ -1,4 +1,4 @@
-package models;
+package mas.models;
 
 import java.io.Serializable;
 

@@ -1,8 +1,7 @@
+package mas;
 import java.util.ArrayList;
 import java.util.List;
-import models.Bid;
-import models.NegotiationIssue;
-import models.ProductBundle;
+ import mas.models.*;
 
 /**
  * Classe temporária para simular um lance, passo a passo, pelo terminal e testar
