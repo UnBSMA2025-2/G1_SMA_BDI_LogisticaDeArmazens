@@ -22,3 +22,18 @@
     - normalizeQualitativeUtility(): Normalização com Números Fuzzy Triangulares (Equação 3)
     - normalizeQuantitativeUtility(): Funções de Utilidade Não-Lineares (Equações 1 e 2)
 - Teste unitário usando Junit
+
+# Fase 3
+
+- BuyerAgent e um SellerAgent trocarem mensagens e realizarem uma negociação rudimentar
+- SA: O SellerAgent inicia enviando uma mensagem contendo um objeto Proposal
+- BA: O BuyerAgent responde com uma contraproposta (ACLMessage.PROPOSE) ou com um ACLMessage.ACCEPT_PROPOSAL.
+
+<center>
+
+![image](assets/sniffer_fase_3.png)
+
+</center>
+
+# Fase 4
+

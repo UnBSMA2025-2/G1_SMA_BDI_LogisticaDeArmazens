@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Run Test (Main.java)",
+            "request": "launch",
+            "mainClass": "mas.Main",
+            "projectName": "agentes-negociacao" 
+        },
+        {
+            "type": "java",
+            "name": "Run JADE (Phase 3)",
+            "request": "launch",
+            "mainClass": "jade.Boot",
+            "projectName": "agentes-negociacao",
+            "args": [
+                "-gui",
+                "-agents",
+                "seller1:mas.agents.SellerAgent;buyer1:mas.agents.BuyerAgent"
+            ]
+        }
+    ]
+}

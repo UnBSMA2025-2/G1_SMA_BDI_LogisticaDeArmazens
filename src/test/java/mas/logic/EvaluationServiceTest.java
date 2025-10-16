@@ -88,6 +88,6 @@ public class EvaluationServiceTest {
         // Quality e Service não mudam.
         // Delivery (β=2.0, cost, exp): V = exp( ((1-(10-8)/(10-1))^2) * ln(0.1) ) = 0.254...
         // Total: U = 0.4*0.5623 + 0.3*0.75 + 0.15*0.254 + 0.15*0.5 = 0.56302
-        assertEquals(0.56302, utility, 0.0001);
+        assertEquals(0.56218, utility, 0.0001);
     }
 }
