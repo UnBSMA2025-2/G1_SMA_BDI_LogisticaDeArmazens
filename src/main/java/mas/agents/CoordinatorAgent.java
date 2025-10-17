@@ -20,7 +20,7 @@ public class CoordinatorAgent extends Agent {
     private int finishedCounter = 0;
     private WinnerDeterminationService wds;
     private List<NegotiationResult> negotiationResults;
-    private int[] productDemand = new int[]{1, 1, 1, 1}; // Demanda por 4 produtos
+    private int[] productDemand = new int[]{1, 0, 0, 0}; // Demanda por 1 produto
 
     protected void setup() {
         System.out.println("Coordinator Agent " + getAID().getName() + " is ready.");
@@ -100,8 +100,7 @@ public class CoordinatorAgent extends Agent {
             if (finishedCounter >= sellerAgents.size()) {
                 System.out.println("--- CA: All negotiations concluded. Determining winners... ---");
 
-                List<NegotiationResult> optimalSolution = wds.findOptimalCombination(negotiationResults, productDemand);
-
+                List<NegotiationResult> optimalSolution = wds.solveWDPWithBranchAndBound(negotiationResults, productDemand);
                 System.out.println("\n--- OPTIMAL SOLUTION FOUND ---");
                 if (optimalSolution.isEmpty()) {
                     System.out.println("No combination of bids could satisfy the demand.");
