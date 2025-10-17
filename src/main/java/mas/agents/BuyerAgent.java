@@ -1,5 +1,6 @@
 package mas.agents;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,6 +16,7 @@ import mas.logic.EvaluationService;
 import mas.logic.EvaluationService.IssueParameters;
 import mas.logic.EvaluationService.IssueType;
 import mas.models.Bid;
+import mas.models.NegotiationResult;
 import mas.models.Proposal;
 
 public class BuyerAgent extends Agent {
@@ -25,13 +27,15 @@ public class BuyerAgent extends Agent {
     private static final String STATE_MAKE_COUNTER_OFFER = "MakeCounterOffer";
     private static final String STATE_END_NEGOTIATION = "EndNegotiation";
 
+    private Bid finalAcceptedBid;
+    private double finalUtility;
     private AID sellerAgent;
     private AID coordinatorAgent;
     private EvaluationService evalService;
     private Map<String, Double> weights;
     private Map<String, IssueParameters> issueParams;
     private ACLMessage receivedProposal;
-    private double acceptanceThreshold = 0.7; // Limiar de aceitação
+    private double acceptanceThreshold = 0.5; // Limiar de aceitação
     private static final String STATE_SEND_REQUEST = "SendRequest";
 
     protected void setup() {
@@ -97,8 +101,19 @@ public class BuyerAgent extends Agent {
         public void action() {
             ACLMessage doneMsg = new ACLMessage(ACLMessage.INFORM);
             doneMsg.addReceiver(coordinatorAgent);
-            doneMsg.setContent("NegotiationFinished");
-            myAgent.send(doneMsg);
+            try {
+                if (finalAcceptedBid != null) {
+                    // Envia o objeto NegotiationResult se houve acordo
+                    NegotiationResult result = new NegotiationResult(finalAcceptedBid, finalUtility, sellerAgent.getLocalName());
+                    doneMsg.setContentObject(result);
+                } else {
+                    // Envia uma mensagem simples se não houve acordo
+                    doneMsg.setContent("NegotiationFailed");
+                }
+                myAgent.send(doneMsg);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }   
 
@@ -160,13 +175,14 @@ public class BuyerAgent extends Agent {
 
                 // Usa o EvaluationService da Fase 2
                 double utility = evalService.calculateUtility(firstBid, weights, issueParams, 1.0); // beta=1.0 (neutro)
-                System.out.println("Buyer: Received proposal with calculated utility: " + utility);
+                System.out.println(getName() + ": Received proposal from " + sellerAgent.getLocalName() + " with utility: " + utility);
 
                 if (utility >= acceptanceThreshold) {
-                    System.out.println("Buyer: Utility is acceptable. Accepting the offer.");
+                    System.out.println(getName() + ": Utility is acceptable. Accepting the offer.");
+                    finalAcceptedBid = firstBid; // GUARDA O LANCE ACEITO
+                    finalUtility = utility;      // GUARDA A UTILIDADE
                     transition = 1; // Aceitar
                 } else {
-                    System.out.println("Buyer: Utility is too low. Making a counter-offer.");
                     transition = 0; // Contraproposta
                 }
             } catch (UnreadableException e) {

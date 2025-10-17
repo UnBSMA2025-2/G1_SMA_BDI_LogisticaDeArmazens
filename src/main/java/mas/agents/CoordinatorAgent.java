@@ -8,16 +8,26 @@ import jade.core.Agent;
 import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
+import jade.lang.acl.UnreadableException;
 import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
+import mas.logic.WinnerDeterminationService;
+import mas.models.NegotiationResult;
 
 public class CoordinatorAgent extends Agent {
 
     private List<AID> sellerAgents;
     private int finishedCounter = 0;
+    private WinnerDeterminationService wds;
+    private List<NegotiationResult> negotiationResults;
+    private int[] productDemand = new int[]{1, 1, 1, 1}; // Demanda por 4 produtos
 
     protected void setup() {
         System.out.println("Coordinator Agent " + getAID().getName() + " is ready.");
+
+        // Inicializa a lista de resultados e o serviço de determinação do vencedor
+        this.wds = new WinnerDeterminationService();
+        this.negotiationResults = new ArrayList<>();
 
         // Lista de fornecedores (hardcoded para a Fase 4)
         sellerAgents = new ArrayList<>();
@@ -64,28 +74,48 @@ public class CoordinatorAgent extends Agent {
     }
 
     private class WaitForResults extends TickerBehaviour {
-        public WaitForResults() {
-            super(CoordinatorAgent.this, 1000); // Verifica por mensagens a cada segundo
-        }
+        public WaitForResults() { super(CoordinatorAgent.this, 1000); }
 
         protected void onTick() {
-            MessageTemplate mt = MessageTemplate.and(
-                MessageTemplate.MatchPerformative(ACLMessage.INFORM),
-                MessageTemplate.MatchContent("NegotiationFinished")
-            );
-            
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
             ACLMessage msg = myAgent.receive(mt);
+
             if (msg != null) {
                 finishedCounter++;
-                System.out.println("CA: Result received from " + msg.getSender().getLocalName() + ". Total finished: " + finishedCounter);
+                try {
+                    // Tenta ler o objeto NegotiationResult
+                    Object content = msg.getContentObject();
+                    if (content instanceof NegotiationResult) {
+                        NegotiationResult result = (NegotiationResult) content;
+                        negotiationResults.add(result);
+                        System.out.println("CA: Result received from " + msg.getSender().getLocalName() + " -> " + result);
+                    } else {
+                        System.out.println("CA: Notification received from " + msg.getSender().getLocalName() + " -> " + msg.getContent());
+                    }
+                } catch (UnreadableException e) {
+                    System.out.println("CA: Received non-object notification from " + msg.getSender().getLocalName());
+                }
             }
 
             if (finishedCounter >= sellerAgents.size()) {
-                System.out.println("CA: Received all negotiation results. Proceeding to winner determination...");
-                // Aqui, na Fase 5, chamaremos o WinnerDeterminationService
-                stop(); // Para este comportamento
-                // O Coordenador pode se autodestruir ou iniciar outra fase
-                // myAgent.doDelete(); 
+                System.out.println("--- CA: All negotiations concluded. Determining winners... ---");
+
+                List<NegotiationResult> optimalSolution = wds.findOptimalCombination(negotiationResults, productDemand);
+
+                System.out.println("\n--- OPTIMAL SOLUTION FOUND ---");
+                if (optimalSolution.isEmpty()) {
+                    System.out.println("No combination of bids could satisfy the demand.");
+                } else {
+                    double totalUtility = 0;
+                    for (NegotiationResult res : optimalSolution) {
+                        System.out.println("-> " + res);
+                        totalUtility += res.getUtility();
+                    }
+                    System.out.printf("Total Maximized Utility: %.3f\n", totalUtility);
+                }
+
+                stop();
+                // myAgent.doDelete();
             }
         }
     }

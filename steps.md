@@ -42,4 +42,17 @@
 - SA: alterado de proativo para reativo
 - BA: envia uma mensagem REQUEST ("Call for Proposal") para o Vendedor que lhe foi designado
 
+<center>
+
 ![image](assets/sniffer_fase_4.png)
+
+</center>
+
+# Fase 5
+
+V1
+- WinnerDeterminationService.java: lógica para resolver o (WDP - Winner Determination Problem) em "brute force"
+- NegotiationResult.java: encapsular o resultado de cada negociação
+
+v2
+-  WinnerDeterminationService.java: implementação do algoritmo Branch-and-Bound (B&B) 

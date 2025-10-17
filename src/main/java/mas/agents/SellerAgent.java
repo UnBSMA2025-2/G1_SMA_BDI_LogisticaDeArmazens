@@ -70,7 +70,7 @@ public class SellerAgent extends Agent {
             // Cria uma proposta inicial "medíocre"
             ProductBundle pb = new ProductBundle(new int[]{1, 0, 0, 0});
             List<NegotiationIssue> issues = new ArrayList<>();
-            issues.add(new NegotiationIssue("Price", 58.0));
+            issues.add(new NegotiationIssue("Price", 40.0));
             issues.add(new NegotiationIssue("Quality", "medium"));
             issues.add(new NegotiationIssue("Delivery", 9.0));
             issues.add(new NegotiationIssue("Service", "poor"));
@@ -86,7 +86,7 @@ public class SellerAgent extends Agent {
             try {
                 msg.setContentObject(proposal);
                 send(msg);
-                System.out.println("Seller: Sent initial proposal -> Price: 58.0");
+                System.out.println("Seller: Sent initial proposal -> Price: 40.0");
             } catch (IOException e) {
                 e.printStackTrace();
             }
