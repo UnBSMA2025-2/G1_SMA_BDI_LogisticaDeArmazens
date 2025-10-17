@@ -3,14 +3,7 @@
     "configurations": [
         {
             "type": "java",
-            "name": "Run Test (Main.java)",
-            "request": "launch",
-            "mainClass": "mas.Main",
-            "projectName": "agentes-negociacao" 
-        },
-        {
-            "type": "java",
-            "name": "Run JADE Phase 6",
+            "name": "Run JADE",
             "request": "launch",
             "mainClass": "jade.Boot",
             "projectName": "agentes-negociacao",

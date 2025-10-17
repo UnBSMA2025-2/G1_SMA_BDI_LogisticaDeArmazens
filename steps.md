@@ -77,8 +77,10 @@ v2
 
 # Fase 7
 
-- Arquivos de config
+- ConfigLoader.java: Singleton para configuração dos agentes pelo config.properties
 
-# Fase 8
+<center>
 
-- integração
+![image](assets/sniffer_fase_7.png)
+
+</center>

@@ -10,6 +10,7 @@ import jade.core.behaviours.FSMBehaviour;
 import jade.core.behaviours.OneShotBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
+import mas.logic.ConfigLoader;
 import mas.models.Bid;
 import mas.models.NegotiationIssue;
 import mas.models.ProductBundle;
@@ -67,26 +68,32 @@ public class SellerAgent extends Agent {
 
     private class SendInitialProposal extends jade.core.behaviours.OneShotBehaviour {
         public void action() {
-            // Cria uma proposta inicial "medíocre"
+            ConfigLoader config = ConfigLoader.getInstance();
+            
+            // Carrega os valores da proposta inicial do arquivo de configuração
+            double initialPrice = config.getDouble("seller.initial.price");
+            String initialQuality = config.getString("seller.initial.quality");
+            double initialDelivery = config.getDouble("seller.initial.delivery");
+            String initialService = config.getString("seller.initial.service");
+
             ProductBundle pb = new ProductBundle(new int[]{1, 0, 0, 0});
             List<NegotiationIssue> issues = new ArrayList<>();
-            issues.add(new NegotiationIssue("Price", 40.0));
-            issues.add(new NegotiationIssue("Quality", "medium"));
-            issues.add(new NegotiationIssue("Delivery", 9.0));
-            issues.add(new NegotiationIssue("Service", "poor"));
+            issues.add(new NegotiationIssue("Price", initialPrice));
+            issues.add(new NegotiationIssue("Quality", initialQuality));
+            issues.add(new NegotiationIssue("Delivery", initialDelivery));
+            issues.add(new NegotiationIssue("Service", initialService));
             Bid bid = new Bid(pb, issues, new int[]{1000, 0, 0, 0});
             
             List<Bid> bids = new ArrayList<>();
             bids.add(bid);
             Proposal proposal = new Proposal(bids);
 
-            // Envia a proposta para o comprador
             ACLMessage msg = new ACLMessage(ACLMessage.PROPOSE);
             msg.addReceiver(buyerAgent);
             try {
                 msg.setContentObject(proposal);
                 send(msg);
-                System.out.println("Seller: Sent initial proposal -> Price: 40.0");
+                System.out.println("Seller: Sent initial proposal -> Price: " + initialPrice);
             } catch (IOException e) {
                 e.printStackTrace();
             }

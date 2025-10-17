@@ -11,6 +11,7 @@ import jade.core.behaviours.OneShotBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.lang.acl.UnreadableException;
+import mas.logic.ConfigLoader;
 import mas.logic.EvaluationService;
 import mas.logic.EvaluationService.IssueParameters;
 import mas.logic.EvaluationService.IssueType;
@@ -34,7 +35,7 @@ public class BuyerAgent extends Agent {
     private Map<String, Double> weights;
     private Map<String, IssueParameters> issueParams;
     private ACLMessage receivedProposal;
-    private double acceptanceThreshold = 0.5; // Limiar de aceitação
+    private double acceptanceThreshold;
     private static final String STATE_SEND_REQUEST = "SendRequest";
 
     protected void setup() {
@@ -113,17 +114,28 @@ public class BuyerAgent extends Agent {
     }   
 
     private void setupBuyerPreferences() {
+        ConfigLoader config = ConfigLoader.getInstance();
+
+        // Carrega o limiar e o beta do arquivo de configuração
+        this.acceptanceThreshold = config.getDouble("buyer.acceptanceThreshold");
+        double beta = config.getDouble("buyer.riskBeta"); 
+
         this.evalService = new EvaluationService();
         
+        // Carrega os pesos do arquivo
         weights = new HashMap<>();
-        weights.put("price", 0.4);
-        weights.put("quality", 0.3);
-        weights.put("delivery", 0.15);
-        weights.put("service", 0.15);
+        weights.put("price", config.getDouble("weights.price"));
+        weights.put("quality", config.getDouble("weights.quality"));
+        weights.put("delivery", config.getDouble("weights.delivery"));
+        weights.put("service", config.getDouble("weights.service"));
 
+        // Carrega os parâmetros (min/max) do arquivo
         issueParams = new HashMap<>();
-        issueParams.put("price", new IssueParameters(50.0, 60.0, IssueType.COST));
-        issueParams.put("delivery", new IssueParameters(1.0, 10.0, IssueType.COST));
+        String[] priceParams = config.getString("params.price").split(",");
+        String[] deliveryParams = config.getString("params.delivery").split(",");
+        
+        issueParams.put("price", new IssueParameters(Double.parseDouble(priceParams[0]), Double.parseDouble(priceParams[1]), IssueType.COST));
+        issueParams.put("delivery", new IssueParameters(Double.parseDouble(deliveryParams[0]), Double.parseDouble(deliveryParams[1]), IssueType.COST));
         issueParams.put("quality", new IssueParameters(0, 0, IssueType.QUALITATIVE));
         issueParams.put("service", new IssueParameters(0, 0, IssueType.QUALITATIVE));
     }
