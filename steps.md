@@ -56,3 +56,29 @@ V1
 
 v2
 -  WinnerDeterminationService.java: implementação do algoritmo Branch-and-Bound (B&B) 
+
+<center>
+
+![image](assets/sniffer_fase_5.png)
+
+</center>
+
+# Fase 6
+
+- TaskDecomposerAgent.java: informar ao CoordinatorAgent (CA) quais produtos precisam ser comprados
+- SynergyDeterminationAgent.java: recebe uma lista de produtos do CA e retorna os "pacotes de produtos" (product bundles) preferidos
+- CA: refatorado para ser reativo, espera pela requisição do TDA, consulta o SDA, e só então começa a orquestração
+
+<center>
+
+![image](assets/sniffer_fase_6.png)
+
+</center>
+
+# Fase 7
+
+- Arquivos de config
+
+# Fase 8
+
+- integração

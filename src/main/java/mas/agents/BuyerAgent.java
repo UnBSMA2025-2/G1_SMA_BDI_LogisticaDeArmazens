@@ -8,7 +8,6 @@ import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.FSMBehaviour;
 import jade.core.behaviours.OneShotBehaviour;
-import jade.core.behaviours.WakerBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.lang.acl.UnreadableException;
@@ -54,37 +53,33 @@ public class BuyerAgent extends Agent {
         // Configuração das preferências do comprador
         setupBuyerPreferences();
 
-        addBehaviour(new WakerBehaviour(this, 20000) {
-            protected void onWake() {
-                FSMBehaviour fsm = new FSMBehaviour(myAgent) {
-                    public int onEnd() {
-                        System.out.println("Buyer FSM finished for " + sellerAgent.getName());
-                        myAgent.addBehaviour(new InformCoordinatorDone());
-                        return super.onEnd();
-                    }
-                };
-
-
-                // REGISTRA OS ESTADOS
-                fsm.registerFirstState(new SendRequest(), STATE_SEND_REQUEST);
-                fsm.registerState(new WaitForProposal(myAgent, 10000), STATE_WAIT_FOR_PROPOSAL);
-                fsm.registerState(new EvaluateProposal(), STATE_EVALUATE_PROPOSAL);
-                fsm.registerState(new AcceptOffer(), STATE_ACCEPT_OFFER);
-                fsm.registerState(new MakeCounterOffer(), STATE_MAKE_COUNTER_OFFER);
-                fsm.registerLastState(new EndNegotiation(), STATE_END_NEGOTIATION);
-                
-                // REGISTRA AS TRANSIÇÕES
-                fsm.registerDefaultTransition(STATE_SEND_REQUEST, STATE_WAIT_FOR_PROPOSAL);
-                fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_EVALUATE_PROPOSAL, 1);
-                fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_END_NEGOTIATION, 0);
-                fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_ACCEPT_OFFER, 1);
-                fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_MAKE_COUNTER_OFFER, 0);
-                fsm.registerDefaultTransition(STATE_ACCEPT_OFFER, STATE_END_NEGOTIATION);
-                fsm.registerDefaultTransition(STATE_MAKE_COUNTER_OFFER, STATE_END_NEGOTIATION);
-
-                myAgent.addBehaviour(fsm);
+        FSMBehaviour fsm = new FSMBehaviour(this) {
+            public int onEnd() {
+                System.out.println("Buyer FSM finished for " + sellerAgent.getName());
+                myAgent.addBehaviour(new InformCoordinatorDone());
+                return super.onEnd();
             }
-        });
+        };
+
+        // REGISTRA OS ESTADOS
+        fsm.registerFirstState(new SendRequest(), STATE_SEND_REQUEST);
+        fsm.registerState(new WaitForProposal(this, 10000), STATE_WAIT_FOR_PROPOSAL);
+        fsm.registerState(new EvaluateProposal(), STATE_EVALUATE_PROPOSAL);
+        fsm.registerState(new AcceptOffer(), STATE_ACCEPT_OFFER);
+        fsm.registerState(new MakeCounterOffer(), STATE_MAKE_COUNTER_OFFER);
+        fsm.registerLastState(new EndNegotiation(), STATE_END_NEGOTIATION);
+                
+        // REGISTRA AS TRANSIÇÕES
+        fsm.registerDefaultTransition(STATE_SEND_REQUEST, STATE_WAIT_FOR_PROPOSAL);
+        fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_EVALUATE_PROPOSAL, 1);
+        fsm.registerTransition(STATE_WAIT_FOR_PROPOSAL, STATE_END_NEGOTIATION, 0);
+        fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_ACCEPT_OFFER, 1);
+        fsm.registerTransition(STATE_EVALUATE_PROPOSAL, STATE_MAKE_COUNTER_OFFER, 0);
+        fsm.registerDefaultTransition(STATE_ACCEPT_OFFER, STATE_END_NEGOTIATION);
+        fsm.registerDefaultTransition(STATE_MAKE_COUNTER_OFFER, STATE_END_NEGOTIATION);
+
+        addBehaviour(fsm);
+            
     }
 
     private class SendRequest extends OneShotBehaviour {

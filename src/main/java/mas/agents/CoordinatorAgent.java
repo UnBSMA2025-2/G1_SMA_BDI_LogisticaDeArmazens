@@ -5,6 +5,8 @@ import java.util.List;
 
 import jade.core.AID;
 import jade.core.Agent;
+import jade.core.behaviours.OneShotBehaviour;
+import jade.core.behaviours.SequentialBehaviour;
 import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
@@ -13,6 +15,7 @@ import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
 import mas.logic.WinnerDeterminationService;
 import mas.models.NegotiationResult;
+import mas.models.ProductBundle;
 
 public class CoordinatorAgent extends Agent {
 
@@ -20,7 +23,7 @@ public class CoordinatorAgent extends Agent {
     private int finishedCounter = 0;
     private WinnerDeterminationService wds;
     private List<NegotiationResult> negotiationResults;
-    private int[] productDemand = new int[]{1, 0, 0, 0}; // Demanda por 1 produto
+    private int[] productDemand;
 
     protected void setup() {
         System.out.println("Coordinator Agent " + getAID().getName() + " is ready.");
@@ -29,29 +32,69 @@ public class CoordinatorAgent extends Agent {
         this.wds = new WinnerDeterminationService();
         this.negotiationResults = new ArrayList<>();
 
-        // Lista de fornecedores (hardcoded para a Fase 4)
-        sellerAgents = new ArrayList<>();
-        sellerAgents.add(new AID("s1", AID.ISLOCALNAME));
-        sellerAgents.add(new AID("s2", AID.ISLOCALNAME));
-        sellerAgents.add(new AID("s3", AID.ISLOCALNAME));
+        // Comportamento sequencial para a fase de preparação
+        SequentialBehaviour preparationPhase = new SequentialBehaviour();
+        preparationPhase.addSubBehaviour(new WaitForTask());
+        preparationPhase.addSubBehaviour(new RequestProductBundles());
+        preparationPhase.addSubBehaviour(new StartNegotiations());
 
-        // Inicia um comportamento para criar os BuyerAgents
-        addBehaviour(new TickerBehaviour(this, 2000) {
-            private int sellersStarted = 0;
-            protected void onTick() {
-                if (sellersStarted < sellerAgents.size()) {
-                    AID seller = sellerAgents.get(sellersStarted);
-                    createBuyerFor(seller);
-                    sellersStarted++;
-                } else {
-                    // Depois de criar todos, para este comportamento
-                    stop();
-                    // E inicia o comportamento de espera
-                    myAgent.addBehaviour(new WaitForResults());
-                }
-            }
-        });
+        addBehaviour(preparationPhase);
     }
+
+    // --- Comportamentos da Fase de Preparação ---
+
+    private class WaitForTask extends OneShotBehaviour {
+        public void action() {
+            System.out.println("CA: Waiting for product requirements from TDA...");
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
+            ACLMessage msg = myAgent.blockingReceive(mt); // Espera bloqueado
+            
+            String productList = msg.getContent();
+            System.out.println("CA: Received task. Products required: " + productList);
+            // Define a demanda com base na requisição do TDA (ex: P1,P2,P3,P4 -> [1,1,1,1])
+            productDemand = new int[productList.split(",").length];
+            for (int i = 0; i < productDemand.length; i++) {
+                productDemand[i] = 1;
+            }
+        }
+    }
+
+    private class RequestProductBundles extends OneShotBehaviour {
+        public void action() {
+            System.out.println("CA: Requesting preferred product bundles from SDA...");
+            ACLMessage msg = new ACLMessage(ACLMessage.REQUEST);
+            msg.addReceiver(new AID("sda", AID.ISLOCALNAME));
+            msg.setContent("generate-bundles");
+            myAgent.send(msg);
+
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
+            ACLMessage reply = myAgent.blockingReceive(mt);
+            try {
+                List<ProductBundle> bundles = (List<ProductBundle>) reply.getContentObject();
+                System.out.println("CA: Received " + bundles.size() + " preferred bundles from SDA.");
+                // Em uma implementação completa, usaríamos 'bundles' para configurar os BAs
+            } catch (UnreadableException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private class StartNegotiations extends OneShotBehaviour {
+        public void action() {
+            System.out.println("CA: Preparation complete. Starting negotiation orchestration...");
+            sellerAgents = new ArrayList<>();
+            sellerAgents.add(new AID("s1", AID.ISLOCALNAME));
+            sellerAgents.add(new AID("s2", AID.ISLOCALNAME));
+            sellerAgents.add(new AID("s3", AID.ISLOCALNAME));
+
+            for (AID seller : sellerAgents) {
+                createBuyerFor(seller);
+            }
+            myAgent.addBehaviour(new WaitForResults());
+        }
+    }
+
+    // --- Métodos e Comportamentos de Orquestração ---
 
     private void createBuyerFor(AID sellerAgent) {
         String buyerName = "buyer_for_" + sellerAgent.getLocalName();
