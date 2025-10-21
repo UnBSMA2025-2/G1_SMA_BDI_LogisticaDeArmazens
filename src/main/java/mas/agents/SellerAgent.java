@@ -39,7 +39,8 @@ public class SellerAgent extends Agent {
     private AID buyerAgent;
     private ACLMessage receivedCounterMsg;
     private int currentRound = 0; // Começa em 0
-
+    private String negotiationId;
+    private ACLMessage initialRequestMsg;
     // Serviços e Configurações
     private EvaluationService evalService;
     private ConcessionService concessionService;
@@ -142,7 +143,9 @@ public class SellerAgent extends Agent {
             MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
             ACLMessage msg = myAgent.blockingReceive(mt); // Espera bloqueado
             if (msg != null) {
+                initialRequestMsg = msg;
                 buyerAgent = msg.getSender();
+                negotiationId = msg.getConversationId();
                  currentRound = 1; // Inicia contagem ao receber request
                 System.out.println(myAgent.getLocalName() + " [R" + currentRound + "]: Received request from " + buyerAgent.getLocalName());
             } else {
@@ -184,6 +187,9 @@ public class SellerAgent extends Agent {
 
             ACLMessage msg = new ACLMessage(ACLMessage.PROPOSE);
             msg.addReceiver(buyerAgent);
+            msg.setConversationId(negotiationId);
+            msg.setInReplyTo(initialRequestMsg.getReplyWith());
+            msg.setReplyWith("prop-" + negotiationId + "-" + System.currentTimeMillis());
             try {
                 msg.setContentObject(proposal);
                 myAgent.send(msg);
@@ -214,12 +220,14 @@ public class SellerAgent extends Agent {
         public void action() {
             // Espera por ACEITAÇÃO ou CONTRA-PROPOSTA do comprador específico
             MessageTemplate mt = MessageTemplate.and(
-                MessageTemplate.MatchSender(buyerAgent),
-                MessageTemplate.or(
-                    MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL),
-                    MessageTemplate.MatchPerformative(ACLMessage.PROPOSE)
-                    // Poderíamos adicionar REJECT_PROPOSAL aqui se quiséssemos tratá-lo
-                )
+                    MessageTemplate.MatchSender(buyerAgent), // Argumento 1
+                    MessageTemplate.and( // Argumento 2
+                            MessageTemplate.or(
+                                    MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL),
+                                    MessageTemplate.MatchPerformative(ACLMessage.PROPOSE)
+                            ),
+                            MessageTemplate.MatchConversationId(negotiationId)
+                    )
             );
             ACLMessage msg = myAgent.receive(mt);
 
@@ -311,9 +319,11 @@ public class SellerAgent extends Agent {
               System.out.println(myAgent.getLocalName() + ": Sending acceptance for buyer's counter-offer.");
              ACLMessage acceptMsg = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
              acceptMsg.addReceiver(buyerAgent);
+             acceptMsg.setConversationId(negotiationId);
              acceptMsg.setConversationId(receivedCounterMsg.getConversationId());
              acceptMsg.setInReplyTo(receivedCounterMsg.getReplyWith());
              acceptMsg.setContent("Accepted your counter-offer.");
+             acceptMsg.setInReplyTo(receivedCounterMsg.getReplyWith());
              myAgent.send(acceptMsg);
          }
      }
@@ -342,6 +352,9 @@ public class SellerAgent extends Agent {
                  Proposal newProposal = new Proposal(List.of(newSellerBid));
                  ACLMessage proposeMsg = new ACLMessage(ACLMessage.PROPOSE);
                  proposeMsg.addReceiver(buyerAgent);
+                 proposeMsg.setConversationId(negotiationId);
+                 proposeMsg.setInReplyTo(receivedCounterMsg.getReplyWith());
+                 proposeMsg.setReplyWith("prop-" + negotiationId + "-" + System.currentTimeMillis());
                  proposeMsg.setContentObject(newProposal);
                  myAgent.send(proposeMsg);
                  System.out.println(myAgent.getLocalName() + ": Sent new proposal (Round " + currentRound + ") -> " + newSellerBid.getIssues().get(0));

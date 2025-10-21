@@ -39,7 +39,7 @@ public class BuyerAgent extends Agent {
     private Bid finalAcceptedBid = null;
     private double finalUtility = 0.0;
     private int currentRound = 0; // Começa em 0, incrementa ao fazer/receber proposta
-
+    private String negotiationId;
     // Serviços e Configurações
     private EvaluationService evalService;
     private ConcessionService concessionService;
@@ -144,10 +144,13 @@ public class BuyerAgent extends Agent {
         @Override
         public void action() {
              currentRound = 1; // Inicia contagem de rodadas
+            negotiationId = "neg-" + sellerAgent.getLocalName() + "-" + System.currentTimeMillis();
             System.out.println(myAgent.getLocalName() + " [R" + currentRound + "]: Sending call for proposal to " + sellerAgent.getLocalName());
             ACLMessage cfp = new ACLMessage(ACLMessage.REQUEST);
             cfp.addReceiver(sellerAgent);
             cfp.setContent("send-proposal");
+            cfp.setConversationId(negotiationId);
+            cfp.setReplyWith("req-" + negotiationId + "-" + System.currentTimeMillis());
             myAgent.send(cfp);
         }
     }
@@ -169,8 +172,11 @@ public class BuyerAgent extends Agent {
         @Override
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
-                MessageTemplate.MatchSender(sellerAgent), // Só aceita do vendedor esperado
-                MessageTemplate.MatchPerformative(ACLMessage.PROPOSE)
+                    MessageTemplate.MatchSender(sellerAgent), // Argumento 1
+                    MessageTemplate.and( // Argumento 2 (que é um novo template)
+                            MessageTemplate.MatchPerformative(ACLMessage.PROPOSE),
+                            MessageTemplate.MatchConversationId(negotiationId)
+                    )
             );
             ACLMessage msg = myAgent.receive(mt);
 
@@ -289,6 +295,9 @@ public class BuyerAgent extends Agent {
                  Proposal counterProposal = new Proposal(List.of(counterBid));
                  ACLMessage proposeMsg = new ACLMessage(ACLMessage.PROPOSE);
                  proposeMsg.addReceiver(sellerAgent);
+                 proposeMsg.setConversationId(negotiationId);
+                 proposeMsg.setInReplyTo(receivedProposalMsg.getReplyWith());
+                 proposeMsg.setReplyWith("prop-" + negotiationId + "-" + System.currentTimeMillis());
                  proposeMsg.setContentObject(counterProposal);
                  myAgent.send(proposeMsg);
                  System.out.println(myAgent.getLocalName() + ": Sent counter-proposal (Round " + currentRound + ") -> " + counterBid.getIssues().get(0)); // Exibe o preço
@@ -308,7 +317,8 @@ public class BuyerAgent extends Agent {
             ACLMessage accept = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
             accept.addReceiver(sellerAgent);
             accept.setConversationId(receivedProposalMsg.getConversationId()); // Opcional: manter a conversa
-            accept.setInReplyTo(receivedProposalMsg.getReplyWith());      // Opcional: referenciar a proposta
+            accept.setConversationId(negotiationId);
+            accept.setInReplyTo(receivedProposalMsg.getReplyWith());
             accept.setContent("Offer accepted.");
             myAgent.send(accept);
         }
