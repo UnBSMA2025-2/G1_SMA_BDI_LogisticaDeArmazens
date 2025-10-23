@@ -1,21 +1,25 @@
 package mas.agents;
 
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-
 import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import mas.models.ProductBundle;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SynergyDeterminationAgent extends Agent {
 
+    private static final Logger logger = LoggerFactory.getLogger(SynergyDeterminationAgent.class);
+
     protected void setup() {
-        System.out.println("SDA " + getAID().getName() + " is ready.");
-        
+        logger.info("SDA {} is ready.", getAID().getName());
+
         // Comportamento para aguardar e responder a pedidos de pacotes de produtos
         addBehaviour(new CyclicBehaviour() {
             public void action() {
@@ -26,8 +30,8 @@ public class SynergyDeterminationAgent extends Agent {
                 ACLMessage msg = myAgent.receive(mt);
 
                 if (msg != null) {
-                    System.out.println("SDA: Received request for product bundles from " + msg.getSender().getName());
-                    
+                    logger.info("SDA: Received request for product bundles from {}", msg.getSender().getName());
+
                     // Simula o algoritmo de determinação de pacotes.
                     // Baseado no Experimento 1, Passo 3.
                     List<ProductBundle> preferredBundles = generatePreferredBundles();
@@ -37,17 +41,18 @@ public class SynergyDeterminationAgent extends Agent {
                     try {
                         reply.setContentObject((Serializable) preferredBundles);
                         myAgent.send(reply);
-                        System.out.println("SDA: Sent preferred product bundles back to CA.");
+                        logger.info("SDA: Sent preferred product bundles back to CA (to {}).", msg.getSender().getName());
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        logger.error("SDA: Failed to set content or send reply to {}.", msg.getSender().getName(), e);
                     }
                 } else {
                     block();
+                    logger.debug("SDA: No matching message received, behaviour blocked.");
                 }
             }
         });
     }
-    
+
     private List<ProductBundle> generatePreferredBundles() {
         List<ProductBundle> bundles = new ArrayList<>();
         // Pacotes de um único produto
