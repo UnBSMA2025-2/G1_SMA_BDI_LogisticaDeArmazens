@@ -1,130 +1,144 @@
 package mas.logic;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import mas.logic.EvaluationService.IssueParameters;
 import mas.logic.EvaluationService.IssueType;
 import mas.models.Bid;
 import mas.models.NegotiationIssue;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Contém a lógica de negócio para concessão (barganha).
+ * Gera novos lances (Bids) com base nas táticas de concessão do artigo.
+ * Implementa as equações de geração de lance (Eq. 5 e 6).
+ */
 public class ConcessionService {
 
     /**
      * Gera um contra-lance (Bid) para a próxima rodada de negociação.
+     *
+     * @param referenceBid O lance anterior (para saber o ProductBundle e os issues).
+     * @param currentRound A rodada atual (t).
+     * @param maxRounds    O deadline (t_max).
+     * @param gamma        O fator de concessão (γ).
+     * @param discountRate O fator de desconto (b_k).
+     * @param issueParams  Os parâmetros (min, max) para os issues.
+     * @param agentType    "buyer" ou "seller", para a direção da concessão.
+     * @return Um novo Bid com valores de issues recalculados.
      */
     public Bid generateCounterBid(Bid referenceBid, int currentRound, int maxRounds, double gamma,
                                   double discountRate, Map<String, IssueParameters> issueParams, String agentType) {
 
         List<NegotiationIssue> counterIssues = new ArrayList<>();
 
+        // TODO (SINERGIA): O 'issueParams' recebido aqui é genérico.
+        // A implementação correta exige que o AGENTE (Buyer/Seller)
+        // passe um 'issueParams' específico para o 'referenceBid.getProductBundle()'.
+        // O ConcessionService está cego para a sinergia, pois seus [min, max]
+        // são os mesmos para todos os pacotes.
+
         for (NegotiationIssue issue : referenceBid.getIssues()) {
             String issueName = issue.getName().toLowerCase();
-            IssueParameters params = issueParams.get(issueName);
+            IssueParameters params = issueParams.get(issueName); // Pega params genéricos
             if (params == null) {
-                //System.err.println("Warning: No parameters found for issue '" + issueName + "' during concession.");
-                // O que fazer? Manter o valor antigo? Pular? Adicionar valor padrão?
-                // Por ora, vamos manter o valor antigo se não houver params.
-                 counterIssues.add(new NegotiationIssue(issue.getName(), issue.getValue()));
+                counterIssues.add(new NegotiationIssue(issue.getName(), issue.getValue()));
                 continue;
             }
 
+            // Calcula a taxa de concessão (Eq. 5)
             double concessionRate = calculateConcessionRate(currentRound, maxRounds, gamma, discountRate);
 
             Object newValue;
             if (params.getType() == IssueType.QUALITATIVE) {
+                // Mapeia a taxa de concessão (0..1) para um valor linguístico
                 newValue = mapConcessionToQualitative(concessionRate, agentType);
             } else {
-                // CORREÇÃO: Passa o agentType para calculateNewQuantitativeValue
+                // Calcula o novo valor quantitativo (Eq. 6)
                 newValue = calculateNewQuantitativeValue(concessionRate, params.getMin(), params.getMax(), params.getType(), agentType);
             }
 
             counterIssues.add(new NegotiationIssue(issue.getName(), newValue));
         }
 
+        // Retorna um novo lance para o MESMO ProductBundle e Quantidades
         return new Bid(referenceBid.getProductBundle(), counterIssues, referenceBid.getQuantities());
     }
 
     /**
      * Calcula a taxa de concessão α(t) usando a Equação 5.
+     * Esta implementação está CORRETA.
      */
     private double calculateConcessionRate(int t, int t_max, double gamma, double b_k) {
         if (t > t_max) t = t_max;
         if (t <= 0) t = 1;
-        // Evita divisão por zero se t_max for 1 ou menos
-         double timeRatio = (t_max <= 1) ? 1.0 : (double)(t - 1) / (t_max - 1);
 
+        double timeRatio = (t_max <= 1) ? 1.0 : (double) (t - 1) / (t_max - 1);
 
-        // Garante b_k (0, 1)
         b_k = Math.max(0.001, Math.min(0.999, b_k));
-         // Garante gamma > 0
-         gamma = Math.max(0.001, gamma);
+        gamma = Math.max(0.001, gamma);
 
-
-        if (gamma <= 1.0) { // Polinomial (Eq. 5, parte 1) [cite: 407]
-             return b_k + (1 - b_k) * Math.pow(timeRatio, 1.0 / gamma);
-        } else { // Exponencial (Eq. 5, parte 2) [cite: 407]
-            if (timeRatio == 1.0) return 1.0; // Evita Math.pow(0, gamma)
+        if (gamma <= 1.0) { // Polinomial (Eq. 5, parte 1)
+            return b_k + (1 - b_k) * Math.pow(timeRatio, 1.0 / gamma);
+        } else { // Exponencial (Eq. 5, parte 2)
+            if (timeRatio == 1.0) return 1.0;
             return Math.exp(Math.pow(1.0 - timeRatio, gamma) * Math.log(b_k));
         }
-        // Não precisamos de fallback linear, pois garantimos gamma > 0
     }
 
     /**
-     * Calcula o novo valor para um issue quantitativo usando a Equação 6,
-     * considerando o tipo de agente e o tipo de issue (cost/benefit).
+     * Calcula o novo valor para um issue quantitativo (Eq. 6).
+     * A lógica de direção (buyer/seller, cost/benefit) está CORRETA.
      */
     private double calculateNewQuantitativeValue(double concessionRate, double min_k, double max_k, IssueType type, String agentType) {
-        // Equação 6 base: NovoValor = LimiteInicial +/- Concessão * (RangeTotal) [cite: 410-411]
+        // TODO (SINERGIA): 'min_k' e 'max_k' são genéricos.
+        // Eles deveriam ser os limites específicos do ProductBundle
+        // que está sendo negociado.
         double range = max_k - min_k;
 
-        // Se min == max, apenas retorna o valor (evita NaN se range for 0)
         if (Math.abs(range) < 1e-9) {
             return min_k;
         }
 
-
         double newValue;
         if (agentType.equalsIgnoreCase("buyer")) {
-            // Comprador concede em direção a valores MENOS preferíveis para ele
-            if (type == IssueType.BENEFIT) { // Cede diminuindo o benefício (vai do max para o min)
+            // Comprador: Cede do seu 'melhor' (min custo) para o 'pior' (max custo)
+            if (type == IssueType.BENEFIT) { // max -> min
                 newValue = max_k - concessionRate * range;
-            } else { // COST - Cede aumentando o custo (vai do min para o max)
+            } else { // COST - min -> max
                 newValue = min_k + concessionRate * range;
             }
         } else { // "seller"
-            // Vendedor concede em direção a valores MAIS preferíveis para o comprador
-            if (type == IssueType.BENEFIT) { // Cede aumentando o benefício (vai do min para o max)
+            // Vendedor: Cede do seu 'melhor' (max preço) para o 'pior' (min preço)
+            if (type == IssueType.BENEFIT) { // min -> max
                 newValue = min_k + concessionRate * range;
-            } else { // COST - Cede diminuindo o custo (vai do max para o min)
+            } else { // COST - max -> min
                 newValue = max_k - concessionRate * range;
             }
         }
-         // Garante que o novo valor permaneça dentro dos limites min/max
-         return Math.max(min_k, Math.min(max_k, newValue));
+        return Math.max(min_k, Math.min(max_k, newValue));
     }
 
 
-    /** Mapeia a taxa de concessão (0..1) para um valor linguístico. */
-     private String mapConcessionToQualitative(double concessionRate, String agentType) {
-         // Concessão 0 = Ponto de partida (Melhor para si)
-         // Concessão 1 = Concessão máxima (Pior para si / Melhor para o outro)
+    /**
+     * Mapeia a taxa de concessão (0..1) para um valor linguístico.
+     * Esta implementação está CORRETA.
+     */
+    private String mapConcessionToQualitative(double concessionRate, String agentType) {
+        double targetValue;
+        if (agentType.equalsIgnoreCase("buyer")) {
+            // Comprador cede de VG (1.0) para VP (0.0)
+            targetValue = 1.0 - concessionRate;
+        } else { // seller
+            // Vendedor cede de VP (0.0) para VG (1.0)
+            targetValue = concessionRate;
+        }
 
-         double targetValue; // Valor alvo na escala 0..1 (0=VP, 1=VG)
-         if (agentType.equalsIgnoreCase("buyer")) {
-             // Comprador começa querendo VG (valor ~1) e cede para VP (valor ~0)
-             targetValue = 1.0 - concessionRate;
-         } else { // seller
-             // Vendedor começa oferecendo VP (valor ~0) e cede para VG (valor ~1)
-             targetValue = concessionRate;
-         }
-
-         // Mapeia targetValue para termos
-         if (targetValue < 0.1) return "very poor";     // 0.0 - 0.1
-         else if (targetValue < 0.3) return "poor";    // 0.1 - 0.3
-         else if (targetValue < 0.7) return "medium";  // 0.3 - 0.7 (Faixa maior para médio)
-         else if (targetValue < 0.9) return "good";    // 0.7 - 0.9
-         else return "very good"; // 0.9 - 1.0
-     }
+        if (targetValue < 0.1) return "very poor";
+        else if (targetValue < 0.3) return "poor";
+        else if (targetValue < 0.7) return "medium";
+        else if (targetValue < 0.9) return "good";
+        else return "very good";
+    }
 }
