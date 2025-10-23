@@ -12,7 +12,7 @@ public class ProductBundle implements Serializable {
     // Garante a compatibilidade entre diferentes versões da classe durante a serialização.
     private static final long serialVersionUID = 1L;
 
-    private int[] products;
+    private final int[] products;
 
     public ProductBundle(int[] products) {
         this.products = products;

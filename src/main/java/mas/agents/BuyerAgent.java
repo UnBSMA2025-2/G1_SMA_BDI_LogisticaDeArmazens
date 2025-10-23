@@ -1,14 +1,8 @@
 package mas.agents;
 
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.HashMap;
-import java.util.List; // Import List
-import java.util.Map;
-
 import jade.core.AID;
 import jade.core.Agent;
-import jade.core.behaviours.Behaviour; // Import Behaviour
+import jade.core.behaviours.Behaviour;
 import jade.core.behaviours.FSMBehaviour;
 import jade.core.behaviours.OneShotBehaviour;
 import jade.lang.acl.ACLMessage;
@@ -22,8 +16,19 @@ import mas.logic.EvaluationService.IssueType;
 import mas.models.Bid;
 import mas.models.NegotiationResult;
 import mas.models.Proposal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class BuyerAgent extends Agent {
+    private static final Logger logger = LoggerFactory.getLogger(BuyerAgent.class);
+
+    private static final String PROTOCOL_REPORT_RESULT = "report-negotiation-result";
     // Nomes dos estados
     private static final String STATE_SEND_REQUEST = "SendRequest";
     private static final String STATE_WAIT_FOR_PROPOSAL = "WaitForProposal";
@@ -39,7 +44,7 @@ public class BuyerAgent extends Agent {
     private Bid finalAcceptedBid = null;
     private double finalUtility = 0.0;
     private int currentRound = 0; // Começa em 0, incrementa ao fazer/receber proposta
-
+    private String negotiationId;
     // Serviços e Configurações
     private EvaluationService evalService;
     private ConcessionService concessionService;
@@ -53,16 +58,17 @@ public class BuyerAgent extends Agent {
 
 
     protected void setup() {
-        System.out.println("Buyer Agent " + getAID().getName() + " is ready.");
+        logger.info("Buyer Agent {} is ready.", getAID().getName());
 
         Object[] args = getArguments();
         if (args != null && args.length > 1) {
             sellerAgent = (AID) args[0];
             coordinatorAgent = (AID) args[1];
-            System.out.println(getName() + ": Assigned seller is " + sellerAgent.getName());
+            logger.info("{}: Assigned seller is {}", getName(), sellerAgent.getName());
         } else {
-            System.err.println(getName() + ": Missing arguments (sellerAID, coordinatorAID). Terminating.");
-            doDelete(); return;
+            logger.error("{}: Missing arguments (sellerAID, coordinatorAID). Terminating.", getName());
+            doDelete();
+            return;
         }
 
         setupBuyerPreferences();
@@ -70,7 +76,7 @@ public class BuyerAgent extends Agent {
         FSMBehaviour fsm = new FSMBehaviour(this) {
             @Override
             public int onEnd() {
-                System.out.println(myAgent.getLocalName() + ": FSM finished negotiation with " + sellerAgent.getLocalName() + ".");
+                logger.info("{}: FSM finished negotiation with {}.", myAgent.getLocalName(), sellerAgent.getLocalName());
                 myAgent.addBehaviour(new InformCoordinatorDone());
                 return super.onEnd();
             }
@@ -121,33 +127,37 @@ public class BuyerAgent extends Agent {
         issueParams.put("quality", new IssueParameters(0, 1, IssueType.QUALITATIVE));
         issueParams.put("service", new IssueParameters(0, 1, IssueType.QUALITATIVE));
     }
-     private void loadIssueParams(ConfigLoader config, String issueName, IssueType type) {
-         String key = "params." + issueName;
-         String value = config.getString(key);
-         if (value != null && !value.isEmpty()) {
-             String[] parts = value.split(",");
-             if (parts.length == 2) {
-                 try {
-                     double min = Double.parseDouble(parts[0].trim());
-                     double max = Double.parseDouble(parts[1].trim());
-                     issueParams.put(issueName, new IssueParameters(min, max, type));
-                 } catch (NumberFormatException e) {
-                     System.err.println(getName() + ": Error parsing params for " + issueName + ": " + value);
-                 }
-             }
-         }
-     }
+
+    private void loadIssueParams(ConfigLoader config, String issueName, IssueType type) {
+        String key = "params." + issueName;
+        String value = config.getString(key);
+        if (value != null && !value.isEmpty()) {
+            String[] parts = value.split(",");
+            if (parts.length == 2) {
+                try {
+                    double min = Double.parseDouble(parts[0].trim());
+                    double max = Double.parseDouble(parts[1].trim());
+                    issueParams.put(issueName, new IssueParameters(min, max, type));
+                } catch (NumberFormatException e) {
+                    logger.error("{}: Error parsing params for {}: {}", getName(), issueName, value, e);
+                }
+            }
+        }
+    }
 
     // --- Comportamentos da FSM ---
 
     private class SendRequest extends OneShotBehaviour {
         @Override
         public void action() {
-             currentRound = 1; // Inicia contagem de rodadas
-            System.out.println(myAgent.getLocalName() + " [R" + currentRound + "]: Sending call for proposal to " + sellerAgent.getLocalName());
+            currentRound = 1; // Inicia contagem de rodadas
+            negotiationId = "neg-" + sellerAgent.getLocalName() + "-" + System.currentTimeMillis();
+            logger.info("{} [R{}]: Sending call for proposal to {}", myAgent.getLocalName(), currentRound, sellerAgent.getLocalName());
             ACLMessage cfp = new ACLMessage(ACLMessage.REQUEST);
             cfp.addReceiver(sellerAgent);
             cfp.setContent("send-proposal");
+            cfp.setConversationId(negotiationId);
+            cfp.setReplyWith("req-" + negotiationId + "-" + System.currentTimeMillis());
             myAgent.send(cfp);
         }
     }
@@ -157,31 +167,36 @@ public class BuyerAgent extends Agent {
         private long startTime;
         private long timeoutMillis = 15000; // Timeout de espera pela proposta (15s)
 
-        public WaitForProposal(Agent a) { super(a); }
+        public WaitForProposal(Agent a) {
+            super(a);
+        }
 
         @Override
         public void onStart() {
             proposalReceived = false;
             startTime = System.currentTimeMillis();
-            //System.out.println(myAgent.getLocalName() + " [R" + currentRound + "]: Waiting for proposal from " + sellerAgent.getLocalName());
+            //logger.debug("{} [R{}]: Waiting for proposal from {}", myAgent.getLocalName(), currentRound, sellerAgent.getLocalName());
         }
 
         @Override
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
-                MessageTemplate.MatchSender(sellerAgent), // Só aceita do vendedor esperado
-                MessageTemplate.MatchPerformative(ACLMessage.PROPOSE)
+                    MessageTemplate.MatchSender(sellerAgent), // Argumento 1
+                    MessageTemplate.and( // Argumento 2 (que é um novo template)
+                            MessageTemplate.MatchPerformative(ACLMessage.PROPOSE),
+                            MessageTemplate.MatchConversationId(negotiationId)
+                    )
             );
             ACLMessage msg = myAgent.receive(mt);
 
             if (msg != null) {
                 receivedProposalMsg = msg;
                 proposalReceived = true;
-                //System.out.println(myAgent.getLocalName() + " [R" + currentRound + "]: Received proposal.");
+                //logger.debug("{} [R{}]: Received proposal.", myAgent.getLocalName(), currentRound);
             } else {
                 long elapsed = System.currentTimeMillis() - startTime;
                 if (elapsed > timeoutMillis) {
-                    System.out.println(myAgent.getLocalName() + ": Timeout waiting for proposal from " + sellerAgent.getLocalName() + ". Ending negotiation.");
+                    logger.warn("{}: Timeout waiting for proposal from {}. Ending negotiation.", myAgent.getLocalName(), sellerAgent.getLocalName());
                     // Define um estado para indicar falha/timeout
                     proposalReceived = true; // Marca como 'done' para sair do estado
                 } else {
@@ -210,13 +225,13 @@ public class BuyerAgent extends Agent {
 
         @Override
         public void action() {
-             // Incrementa a rodada ao avaliar uma proposta recebida
-             currentRound++;
-            System.out.println(myAgent.getLocalName() + " [R" + currentRound + "]: Evaluating proposal from " + sellerAgent.getLocalName());
+            // Incrementa a rodada ao avaliar uma proposta recebida
+            currentRound++;
+            logger.info("{} [R{}]: Evaluating proposal from {}", myAgent.getLocalName(), currentRound, sellerAgent.getLocalName());
 
 
             if (currentRound > maxRounds) {
-                System.out.println(myAgent.getLocalName() + ": Deadline reached (" + currentRound + "/" + maxRounds + "). Ending negotiation.");
+                logger.warn("{}: Deadline reached ({}/{}) . Ending negotiation.", myAgent.getLocalName(), currentRound, maxRounds);
                 finalAcceptedBid = null;
                 transitionEvent = 2; // Sinaliza deadline
                 return;
@@ -229,34 +244,37 @@ public class BuyerAgent extends Agent {
                     if (p.getBids() != null && !p.getBids().isEmpty()) {
                         Bid receivedBid = p.getBids().get(0); // Assume um lance por proposta por simplicidade
 
-                        double utility = evalService.calculateUtility("buyer",receivedBid, weights, issueParams, buyerRiskBeta);
-                        System.out.printf("%s: Received bid utility = %.4f (Threshold = %.4f)\n", myAgent.getLocalName(), utility, acceptanceThreshold);
+                        double utility = evalService.calculateUtility("buyer", receivedBid, weights, issueParams, buyerRiskBeta);
+                        logger.info("{}: Received bid utility = {} (Threshold = {})", myAgent.getLocalName(), String.format("%.4f", utility), String.format("%.4f", acceptanceThreshold));
 
 
                         // Condição de Aceitabilidade (Eq. 7 - Simplificada)
                         // U(Bid_s(t)) >= U_min E U(Bid_s(t)) >= U(Bid_b(t+1))
                         // Aqui U_min é acceptanceThreshold. Calculamos U(Bid_b(t+1))
                         Bid hypotheticalCounter = concessionService.generateCounterBid(receivedBid, currentRound + 1, maxRounds, buyerGamma, discountRate, issueParams, "buyer");
-                        double nextCounterUtility = evalService.calculateUtility("buyer",hypotheticalCounter, weights, issueParams, buyerRiskBeta);
+                        double nextCounterUtility = evalService.calculateUtility("buyer", hypotheticalCounter, weights, issueParams, buyerRiskBeta);
 
                         if (utility >= acceptanceThreshold && utility >= nextCounterUtility) {
-                             System.out.println(myAgent.getLocalName() + ": Offer is acceptable (Utility " + String.format("%.4f", utility) + " >= Threshold " + String.format("%.4f", acceptanceThreshold) + " AND >= Next Counter " + String.format("%.4f", nextCounterUtility) + "). Accepting.");
+                            logger.info("{}: Offer is acceptable (Utility {} >= Threshold {} AND >= Next Counter {}). Accepting.",
+                                    myAgent.getLocalName(),
+                                    String.format("%.4f", utility),
+                                    String.format("%.4f", acceptanceThreshold),
+                                    String.format("%.4f", nextCounterUtility));
                             finalAcceptedBid = receivedBid;
                             finalUtility = utility;
                             transitionEvent = 1; // Aceitar
                         } else {
-                             System.out.println(myAgent.getLocalName() + ": Offer not acceptable (Utility " + String.format("%.4f", utility) + "). Will make counter-offer.");
+                            logger.info("{}: Offer not acceptable (Utility {}). Will make counter-offer.", myAgent.getLocalName(), String.format("%.4f", utility));
                             transitionEvent = 0; // Fazer contraproposta
                         }
                     } else {
-                        System.err.println(myAgent.getLocalName() + ": Received empty proposal.");
+                        logger.warn("{}: Received empty proposal.", myAgent.getLocalName());
                     }
                 } else {
-                     System.err.println(myAgent.getLocalName() + ": Received unexpected content type: " + (content == null ? "null" : content.getClass().getName()));
-                 }
+                    logger.error("{}: Received unexpected content type: {}", myAgent.getLocalName(), (content == null ? "null" : content.getClass().getName()));
+                }
             } catch (UnreadableException e) {
-                System.err.println(myAgent.getLocalName() + ": Failed to read proposal content.");
-                e.printStackTrace();
+                logger.error("{}: Failed to read proposal content.", myAgent.getLocalName(), e);
             }
         }
 
@@ -266,58 +284,60 @@ public class BuyerAgent extends Agent {
         }
     }
 
-     private class MakeCounterOffer extends OneShotBehaviour {
-         @Override
-         public void action() {
-             // A rodada já foi incrementada em EvaluateProposal ANTES de decidir fazer a contraproposta
-             System.out.println(myAgent.getLocalName() + " [R" + currentRound + "]: Generating counter-offer...");
+    private class MakeCounterOffer extends OneShotBehaviour {
+        @Override
+        public void action() {
+            // A rodada já foi incrementada em EvaluateProposal ANTES de decidir fazer a contraproposta
+            logger.info("{} [R{}]: Generating counter-offer...", myAgent.getLocalName(), currentRound);
 
-             try {
-                 Proposal receivedP = (Proposal) receivedProposalMsg.getContentObject();
-                 Bid receivedB = receivedP.getBids().get(0);
+            try {
+                Proposal receivedP = (Proposal) receivedProposalMsg.getContentObject();
+                Bid receivedB = receivedP.getBids().get(0);
 
-                 Bid counterBid = concessionService.generateCounterBid(
-                         receivedB, // Usa o lance recebido como referência
-                         currentRound,
-                         maxRounds,
-                         buyerGamma,
-                         discountRate,
-                         issueParams,
-                         "buyer" // Identifica que é o comprador fazendo a concessão
-                 );
+                Bid counterBid = concessionService.generateCounterBid(
+                        receivedB, // Usa o lance recebido como referência
+                        currentRound,
+                        maxRounds,
+                        buyerGamma,
+                        discountRate,
+                        issueParams,
+                        "buyer" // Identifica que é o comprador fazendo a concessão
+                );
 
-                 Proposal counterProposal = new Proposal(List.of(counterBid));
-                 ACLMessage proposeMsg = new ACLMessage(ACLMessage.PROPOSE);
-                 proposeMsg.addReceiver(sellerAgent);
-                 proposeMsg.setContentObject(counterProposal);
-                 myAgent.send(proposeMsg);
-                 System.out.println(myAgent.getLocalName() + ": Sent counter-proposal (Round " + currentRound + ") -> " + counterBid.getIssues().get(0)); // Exibe o preço
+                Proposal counterProposal = new Proposal(List.of(counterBid));
+                ACLMessage proposeMsg = new ACLMessage(ACLMessage.PROPOSE);
+                proposeMsg.addReceiver(sellerAgent);
+                proposeMsg.setConversationId(negotiationId);
+                proposeMsg.setInReplyTo(receivedProposalMsg.getReplyWith());
+                proposeMsg.setReplyWith("prop-" + negotiationId + "-" + System.currentTimeMillis());
+                proposeMsg.setContentObject(counterProposal);
+                myAgent.send(proposeMsg);
+                logger.info("{}: Sent counter-proposal (Round {}) -> {}", myAgent.getLocalName(), currentRound, counterBid.getIssues().get(0)); // Exibe o preço
 
-             } catch (UnreadableException | IOException e) {
-                 System.err.println(myAgent.getLocalName() + ": Error creating/sending counter-proposal");
-                 e.printStackTrace();
-                 // Poderia transicionar para EndNegotiation em caso de erro grave
-             }
-         }
-     }
+            } catch (UnreadableException | IOException e) {
+                logger.error("{}: Error creating/sending counter-proposal", myAgent.getLocalName(), e);
+                // Poderia transicionar para EndNegotiation em caso de erro grave
+            }
+        }
+    }
 
     private class AcceptOffer extends OneShotBehaviour {
         @Override
         public void action() {
-            System.out.println(myAgent.getLocalName() + ": Sending acceptance message to " + sellerAgent.getLocalName());
+            logger.info("{}: Sending acceptance message to {}", myAgent.getLocalName(), sellerAgent.getLocalName());
             ACLMessage accept = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
             accept.addReceiver(sellerAgent);
-            accept.setConversationId(receivedProposalMsg.getConversationId()); // Opcional: manter a conversa
-            accept.setInReplyTo(receivedProposalMsg.getReplyWith());      // Opcional: referenciar a proposta
+            accept.setConversationId(negotiationId);
+            accept.setInReplyTo(receivedProposalMsg.getReplyWith());
             accept.setContent("Offer accepted.");
             myAgent.send(accept);
         }
     }
 
-    private class EndNegotiation extends OneShotBehaviour {
+    private static class EndNegotiation extends OneShotBehaviour {
         @Override
         public void action() {
-            System.out.println(myAgent.getLocalName() + ": Negotiation process finished.");
+            logger.info("{}: Negotiation process finished.", myAgent.getLocalName());
             // A lógica de informar o coordenador já está no onEnd da FSM
         }
     }
@@ -327,19 +347,19 @@ public class BuyerAgent extends Agent {
         public void action() {
             ACLMessage doneMsg = new ACLMessage(ACLMessage.INFORM);
             doneMsg.addReceiver(coordinatorAgent);
+            doneMsg.setProtocol(PROTOCOL_REPORT_RESULT);
             try {
                 if (finalAcceptedBid != null) {
                     NegotiationResult result = new NegotiationResult(finalAcceptedBid, finalUtility, sellerAgent.getLocalName());
                     doneMsg.setContentObject(result);
-                    System.out.println(myAgent.getLocalName() + ": Informing Coordinator of successful negotiation.");
+                    logger.info("{}: Informing Coordinator of successful negotiation.", myAgent.getLocalName());
                 } else {
                     doneMsg.setContent("NegotiationFailed");
-                    System.out.println(myAgent.getLocalName() + ": Informing Coordinator of failed negotiation.");
+                    logger.info("{}: Informing Coordinator of failed negotiation.", myAgent.getLocalName());
                 }
                 myAgent.send(doneMsg);
             } catch (IOException e) {
-                System.err.println(myAgent.getLocalName() + ": Error sending result to Coordinator");
-                e.printStackTrace();
+                logger.error("{}: Error sending result to Coordinator", myAgent.getLocalName(), e);
             }
         }
     }

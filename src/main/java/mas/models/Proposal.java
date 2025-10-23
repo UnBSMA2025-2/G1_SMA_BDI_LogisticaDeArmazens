@@ -10,7 +10,7 @@ import java.util.List;
 public class Proposal implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private List<Bid> bids;
+    private final List<Bid> bids;
 
     public Proposal(List<Bid> bids) {
         this.bids = bids;

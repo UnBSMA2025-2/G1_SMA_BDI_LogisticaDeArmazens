@@ -1,8 +1,5 @@
 package mas.agents;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.OneShotBehaviour;
@@ -16,9 +13,18 @@ import jade.wrapper.StaleProxyException;
 import mas.logic.WinnerDeterminationService;
 import mas.models.NegotiationResult;
 import mas.models.ProductBundle;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class CoordinatorAgent extends Agent {
+    private static final Logger logger = LoggerFactory.getLogger(CoordinatorAgent.class);
 
+    private static final String PROTOCOL_GET_BUNDLES = "get-bundles-protocol";
+    private static final String PROTOCOL_REPORT_RESULT = "report-negotiation-result";
+    private static final String PROTOCOL_DEFINE_TASK = "define-task-protocol";
     private List<AID> sellerAgents;
     private int finishedCounter = 0;
     private WinnerDeterminationService wds;
@@ -26,7 +32,7 @@ public class CoordinatorAgent extends Agent {
     private int[] productDemand;
 
     protected void setup() {
-        System.out.println("Coordinator Agent " + getAID().getName() + " is ready.");
+        logger.info("Coordinator Agent {} is ready.", getAID().getName());
 
         // Inicializa a lista de resultados e o serviço de determinação do vencedor
         this.wds = new WinnerDeterminationService();
@@ -45,43 +51,67 @@ public class CoordinatorAgent extends Agent {
 
     private class WaitForTask extends OneShotBehaviour {
         public void action() {
-            System.out.println("CA: Waiting for product requirements from TDA...");
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
+            logger.info("CA: Waiting for product requirements from TDA...");
+            MessageTemplate mt = MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.REQUEST),
+                    MessageTemplate.MatchProtocol(PROTOCOL_DEFINE_TASK)
+            );
             ACLMessage msg = myAgent.blockingReceive(mt); // Espera bloqueado
-            
+
+            if (msg == null) {
+                logger.warn("CA: No task message received (null).");
+                return;
+            }
+
             String productList = msg.getContent();
-            System.out.println("CA: Received task. Products required: " + productList);
+            logger.info("CA: Received task. Products required: {}", productList);
             // Define a demanda com base na requisição do TDA (ex: P1,P2,P3,P4 -> [1,1,1,1])
             productDemand = new int[productList.split(",").length];
             for (int i = 0; i < productDemand.length; i++) {
                 productDemand[i] = 1;
             }
+            logger.debug("CA: Product demand set to length {}.", productDemand.length);
         }
     }
 
     private class RequestProductBundles extends OneShotBehaviour {
         public void action() {
-            System.out.println("CA: Requesting preferred product bundles from SDA...");
+            logger.info("CA: Requesting preferred product bundles from SDA...");
             ACLMessage msg = new ACLMessage(ACLMessage.REQUEST);
             msg.addReceiver(new AID("sda", AID.ISLOCALNAME));
             msg.setContent("generate-bundles");
+            msg.setProtocol(PROTOCOL_GET_BUNDLES); // Define o protocolo
+            msg.setReplyWith("req-bundles-" + System.currentTimeMillis()); // ID único da pergunta
             myAgent.send(msg);
 
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
+            MessageTemplate mt = MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.INFORM),
+                    MessageTemplate.MatchProtocol(PROTOCOL_GET_BUNDLES) // Só aceita msgs deste protocolo
+            );
             ACLMessage reply = myAgent.blockingReceive(mt);
+            if (reply == null) {
+                logger.warn("CA: No reply received for bundle request.");
+                return;
+            }
             try {
+                @SuppressWarnings("unchecked")
                 List<ProductBundle> bundles = (List<ProductBundle>) reply.getContentObject();
-                System.out.println("CA: Received " + bundles.size() + " preferred bundles from SDA.");
+                logger.info("CA: Received {} preferred bundles from SDA.", bundles == null ? 0 : bundles.size());
+                if (bundles != null && logger.isDebugEnabled()) {
+                    for (int i = 0; i < bundles.size(); i++) {
+                        logger.debug("CA: Bundle[{}] = {}", i, bundles.get(i));
+                    }
+                }
                 // Em uma implementação completa, usaríamos 'bundles' para configurar os BAs
             } catch (UnreadableException e) {
-                e.printStackTrace();
+                logger.error("CA: Failed to read bundles object from SDA.", e);
             }
         }
     }
 
     private class StartNegotiations extends OneShotBehaviour {
         public void action() {
-            System.out.println("CA: Preparation complete. Starting negotiation orchestration...");
+            logger.info("CA: Preparation complete. Starting negotiation orchestration...");
             sellerAgents = new ArrayList<>();
             sellerAgents.add(new AID("s1", AID.ISLOCALNAME));
             sellerAgents.add(new AID("s2", AID.ISLOCALNAME));
@@ -98,29 +128,35 @@ public class CoordinatorAgent extends Agent {
 
     private void createBuyerFor(AID sellerAgent) {
         String buyerName = "buyer_for_" + sellerAgent.getLocalName();
-        System.out.println("CA: Creating " + buyerName + " to negotiate with " + sellerAgent.getLocalName());
+        logger.info("CA: Creating {} to negotiate with {}", buyerName, sellerAgent.getLocalName());
 
         try {
             // Cria os argumentos para passar ao BuyerAgent: [AID do Vendedor, AID do Coordenador]
             Object[] args = new Object[]{sellerAgent, getAID()};
-            
+
             // Cria a instância do agente no container
             AgentController buyerController = getContainerController().createNewAgent(
-                buyerName,          // Nome do novo agente
-                "mas.agents.BuyerAgent", // Classe do novo agente
-                args                // Argumentos
+                    buyerName,          // Nome do novo agente
+                    "mas.agents.BuyerAgent", // Classe do novo agente
+                    args                // Argumentos
             );
             buyerController.start(); // Inicia o agente
+            logger.debug("CA: Buyer agent {} started successfully.", buyerName);
         } catch (StaleProxyException e) {
-            e.printStackTrace();
+            logger.error("CA: Failed to create/start buyer agent " + buyerName, e);
         }
     }
 
     private class WaitForResults extends TickerBehaviour {
-        public WaitForResults() { super(CoordinatorAgent.this, 1000); }
+        public WaitForResults() {
+            super(CoordinatorAgent.this, 1000);
+        }
 
         protected void onTick() {
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
+            MessageTemplate mt = MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.INFORM),
+                    MessageTemplate.MatchProtocol(PROTOCOL_REPORT_RESULT) // Só ouve resultados de negociação
+            );
             ACLMessage msg = myAgent.receive(mt);
 
             if (msg != null) {
@@ -131,29 +167,29 @@ public class CoordinatorAgent extends Agent {
                     if (content instanceof NegotiationResult) {
                         NegotiationResult result = (NegotiationResult) content;
                         negotiationResults.add(result);
-                        System.out.println("CA: Result received from " + msg.getSender().getLocalName() + " -> " + result);
+                        logger.info("CA: Result received from {} -> {}", msg.getSender().getLocalName(), result);
                     } else {
-                        System.out.println("CA: Notification received from " + msg.getSender().getLocalName() + " -> " + msg.getContent());
+                        logger.info("CA: Notification received from {} -> {}", msg.getSender().getLocalName(), msg.getContent());
                     }
                 } catch (UnreadableException e) {
-                    System.out.println("CA: Received non-object notification from " + msg.getSender().getLocalName());
+                    logger.warn("CA: Received non-object notification from {}", msg.getSender().getLocalName());
                 }
             }
 
-            if (finishedCounter >= sellerAgents.size()) {
-                System.out.println("--- CA: All negotiations concluded. Determining winners... ---");
+            if (finishedCounter >= (sellerAgents == null ? 0 : sellerAgents.size())) {
+                logger.info("--- CA: All negotiations concluded. Determining winners... ---");
 
                 List<NegotiationResult> optimalSolution = wds.solveWDPWithBranchAndBound(negotiationResults, productDemand);
-                System.out.println("\n--- OPTIMAL SOLUTION FOUND ---");
-                if (optimalSolution.isEmpty()) {
-                    System.out.println("No combination of bids could satisfy the demand.");
+                logger.info("\n--- OPTIMAL SOLUTION FOUND ---");
+                if (optimalSolution == null || optimalSolution.isEmpty()) {
+                    logger.info("No combination of bids could satisfy the demand.");
                 } else {
                     double totalUtility = 0;
                     for (NegotiationResult res : optimalSolution) {
-                        System.out.println("-> " + res);
+                        logger.info("-> {}", res);
                         totalUtility += res.getUtility();
                     }
-                    System.out.printf("Total Maximized Utility: %.3f\n", totalUtility);
+                    logger.info("Total Maximized Utility: {:.3f}", totalUtility);
                 }
 
                 stop();
