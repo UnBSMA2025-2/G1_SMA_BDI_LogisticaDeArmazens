@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * Representa uma proposta (ou contraproposta), que é um conjunto de múltiplos Bids. [cite: 146, 288]
+ * Representa uma proposta (ou contraproposta), que é um conjunto de múltiplos Bids.
  * Permite que um agente faça ofertas para diferentes pacotes de produtos de uma só vez.
  */
 public class Proposal implements Serializable {

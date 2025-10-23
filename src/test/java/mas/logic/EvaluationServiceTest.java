@@ -43,7 +43,7 @@ public class EvaluationServiceTest {
         weights.put("service", 0.15);
 
         // 3. Definir os parâmetros [min, max] para cada issue quantitativo
-        // Valores baseados na Tabela 3 do artigo para o pacote "1000" [cite: 442]
+        // Valores baseados na Tabela 3 do artigo para o pacote "1000"
         issueParams = new HashMap<>();
         issueParams.put("price", new IssueParameters(50.0, 60.0, IssueType.COST));
         issueParams.put("delivery", new IssueParameters(1.0, 10.0, IssueType.COST));
