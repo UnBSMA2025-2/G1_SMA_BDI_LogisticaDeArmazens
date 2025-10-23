@@ -10,7 +10,7 @@ public class App {
     public static void main(String[] args) throws Exception {
         Runtime rt = Runtime.instance();
         Profile p = new ProfileImpl();
-        p.setParameter(Profile.GUI, "true"); // Optional: show JADE GUI
+        p.setParameter(Profile.GUI, "true");
         ContainerController cc = rt.createMainContainer(p);
 
         // Create agents

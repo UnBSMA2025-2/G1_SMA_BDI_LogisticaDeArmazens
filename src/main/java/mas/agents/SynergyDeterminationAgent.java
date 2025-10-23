@@ -19,7 +19,10 @@ public class SynergyDeterminationAgent extends Agent {
         // Comportamento para aguardar e responder a pedidos de pacotes de produtos
         addBehaviour(new CyclicBehaviour() {
             public void action() {
-                MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
+                MessageTemplate mt = MessageTemplate.and(
+                        MessageTemplate.MatchPerformative(ACLMessage.REQUEST),
+                        MessageTemplate.MatchProtocol("get-bundles-protocol") // Usa a mesma string do CA
+                );
                 ACLMessage msg = myAgent.receive(mt);
 
                 if (msg != null) {

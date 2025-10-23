@@ -12,9 +12,9 @@ public class Bid implements Serializable {
     private static final long serialVersionUID = 1L;
     
     //Bid = ⟨PB, I1,...,Ik, Q⟩
-    private ProductBundle productBundle; // PB
-    private List<NegotiationIssue> issues; // I1, ..., Ik
-    private int[] quantities; // Q
+    private final ProductBundle productBundle; // PB
+    private final List<NegotiationIssue> issues; // I1, ..., Ik
+    private final int[] quantities; // Q
 
     public Bid(ProductBundle productBundle, List<NegotiationIssue> issues, int[] quantities) {
         this.productBundle = productBundle;

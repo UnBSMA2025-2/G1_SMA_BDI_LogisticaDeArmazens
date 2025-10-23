@@ -5,9 +5,9 @@ import java.io.Serializable;
 public class NegotiationResult implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private Bid finalBid;
-    private double utility;
-    private String supplierName;
+    private final Bid finalBid;
+    private final double utility;
+    private final String supplierName;
 
     public NegotiationResult(Bid finalBid, double utility, String supplierName) {
         this.finalBid = finalBid;

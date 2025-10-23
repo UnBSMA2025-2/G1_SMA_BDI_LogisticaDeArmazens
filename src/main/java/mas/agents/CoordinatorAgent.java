@@ -18,7 +18,9 @@ import mas.models.NegotiationResult;
 import mas.models.ProductBundle;
 
 public class CoordinatorAgent extends Agent {
-
+    private static final String PROTOCOL_GET_BUNDLES = "get-bundles-protocol";
+    private static final String PROTOCOL_REPORT_RESULT = "report-negotiation-result";
+    private static final String PROTOCOL_DEFINE_TASK = "define-task-protocol";
     private List<AID> sellerAgents;
     private int finishedCounter = 0;
     private WinnerDeterminationService wds;
@@ -46,7 +48,10 @@ public class CoordinatorAgent extends Agent {
     private class WaitForTask extends OneShotBehaviour {
         public void action() {
             System.out.println("CA: Waiting for product requirements from TDA...");
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
+            MessageTemplate mt = MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.REQUEST),
+                    MessageTemplate.MatchProtocol(PROTOCOL_DEFINE_TASK)
+            );
             ACLMessage msg = myAgent.blockingReceive(mt); // Espera bloqueado
             
             String productList = msg.getContent();
@@ -65,9 +70,14 @@ public class CoordinatorAgent extends Agent {
             ACLMessage msg = new ACLMessage(ACLMessage.REQUEST);
             msg.addReceiver(new AID("sda", AID.ISLOCALNAME));
             msg.setContent("generate-bundles");
+            msg.setProtocol(PROTOCOL_GET_BUNDLES); // Define o protocolo
+            msg.setReplyWith("req-bundles-" + System.currentTimeMillis()); // ID único da pergunta
             myAgent.send(msg);
 
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
+            MessageTemplate mt = MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.INFORM),
+                    MessageTemplate.MatchProtocol(PROTOCOL_GET_BUNDLES) // Só aceita msgs deste protocolo
+            );
             ACLMessage reply = myAgent.blockingReceive(mt);
             try {
                 List<ProductBundle> bundles = (List<ProductBundle>) reply.getContentObject();
@@ -120,7 +130,10 @@ public class CoordinatorAgent extends Agent {
         public WaitForResults() { super(CoordinatorAgent.this, 1000); }
 
         protected void onTick() {
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
+            MessageTemplate mt = MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.INFORM),
+                    MessageTemplate.MatchProtocol(PROTOCOL_REPORT_RESULT) // Só ouve resultados de negociação
+            );
             ACLMessage msg = myAgent.receive(mt);
 
             if (msg != null) {

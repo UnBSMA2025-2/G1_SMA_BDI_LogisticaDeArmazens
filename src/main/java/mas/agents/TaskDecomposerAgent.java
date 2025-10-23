@@ -20,14 +20,14 @@ public class TaskDecomposerAgent extends Agent {
         });
     }
 
-    private class SendRequestBehaviour extends OneShotBehaviour {
+    private static class SendRequestBehaviour extends OneShotBehaviour {
         public void action() {
             System.out.println("TDA: Woke up. Sending product requirements to Coordinator Agent...");
             
             ACLMessage msg = new ACLMessage(ACLMessage.REQUEST);
             msg.addReceiver(new AID("ca", AID.ISLOCALNAME));
-            msg.setContent("P1,P2,P3,P4"); 
-            
+            msg.setContent("P1,P2,P3,P4");
+            msg.setProtocol("define-task-protocol");
             myAgent.send(msg);
         }
     }

@@ -8,8 +8,8 @@ import java.io.Serializable;
 public class NegotiationIssue implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private String name;
-    private Object value; // Pode ser um Integer/Double para preço/entrega ou String para qualidade/serviço
+    private final String name;
+    private final Object value; // Pode ser um Integer/Double para preço/entrega ou String para qualidade/serviço
 
     public NegotiationIssue(String name, Object value) {
         this.name = name;
