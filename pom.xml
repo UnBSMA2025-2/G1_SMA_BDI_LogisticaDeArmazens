@@ -3,7 +3,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.seusistema</groupId>
+    <groupId>mas.agents</groupId>
     <artifactId>agentes-negociacao</artifactId>
     <version>1.0.0</version>
 
@@ -14,12 +14,11 @@
     </properties>
 
     <dependencies>
+        <!-- add this dependency in `pom.xml` (remove scope/systemPath) -->
         <dependency>
             <groupId>com.tilab.jade</groupId>
             <artifactId>jade</artifactId>
             <version>4.5.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/lib/jade.jar</systemPath>
         </dependency>
 
         <dependency>
@@ -48,4 +47,29 @@
         </dependency>
 
     </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.4.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>mas.App</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
