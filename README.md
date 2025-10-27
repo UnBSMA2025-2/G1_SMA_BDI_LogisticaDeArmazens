@@ -31,11 +31,31 @@ Capriche nessa seção, pois ela é a primeira a ser lida pelos interessados no 
 Adicione 2 ou mais screenshots do projeto em termos de interface e/ou funcionamento.
 
 ## Instalação 
-**Linguagens**: xxxxxx<br>
-**Tecnologias**: xxxxxx<br>
-Descreva os pré-requisitos para rodar o seu projeto e os comandos necessários.
-Insira um manual ou um script para auxiliar ainda mais.
-Gifs animados e outras ilustrações são bem-vindos!
+- **Linguagem:** Java 11
+- **Tecnologias:** Maven e JADE
+
+Primeiro instale as dependências do projeto:
+
+```bash
+mvn install:install-file \
+  -Dfile=lib/jade.jar \
+  -DgroupId=com.tilab.jade \
+  -DartifactId=jade \
+  -Dversion=4.5.0 \
+  -Dpackaging=jar
+```
+
+Depois, para construir o projeto, utilize o comando:
+
+```bash
+mvn clean package
+```
+
+Então , para executar o projeto, utilize o comando:
+
+```bash
+java -jar target/agentes-negociacao-1.0.0.jar
+```
 
 ## Uso 
 Explique como usar seu projeto.
