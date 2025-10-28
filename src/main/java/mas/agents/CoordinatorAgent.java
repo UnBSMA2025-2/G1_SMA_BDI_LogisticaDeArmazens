@@ -2,6 +2,7 @@ package mas.agents;
 
 import jade.core.AID;
 import jade.core.Agent;
+import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.OneShotBehaviour;
 import jade.core.behaviours.SequentialBehaviour;
 import jade.core.behaviours.TickerBehaviour;
@@ -59,28 +60,43 @@ public class CoordinatorAgent extends Agent {
     /**
      * Estado 1: Aguarda a definição da tarefa (produtos requeridos) do TDA.
      */
-    private class WaitForTask extends OneShotBehaviour {
+    private class WaitForTask extends CyclicBehaviour {
         public void action() {
-            logger.info("CA: Waiting for product requirements from TDA...");
             MessageTemplate mt = MessageTemplate.and(
                     MessageTemplate.MatchPerformative(ACLMessage.REQUEST),
                     MessageTemplate.MatchProtocol(PROTOCOL_DEFINE_TASK)
             );
-            ACLMessage msg = myAgent.blockingReceive(mt);
+            ACLMessage msg = myAgent.receive(mt);
 
-            if (msg == null) {
-                logger.warn("CA: No task message received (null).");
-                return;
+            if (msg != null) {
+                String productList = msg.getContent();
+                System.out.println("🎯 ===== CA RECEIVED DYNAMIC DEMAND: " + productList + " =====");
+                logger.info("🎯 CA RECEIVED DYNAMIC DEMAND: {}", productList);
+                logger.info("CA: Received NEW dynamic task. Products required: {}", productList);
+                
+                String[] products = productList.split(",");
+                productDemand = new int[4];
+                
+                for (String product : products) {
+                    switch (product.trim()) {
+                        case "P1": productDemand[0]++; break;
+                        case "P2": productDemand[1]++; break;
+                        case "P3": productDemand[2]++; break;
+                        case "P4": productDemand[3]++; break;
+                    }
+                }
+                
+                logger.info("CA: Parsed demand vector: P1={}, P2={}, P3={}, P4={}", 
+                        productDemand[0], productDemand[1], productDemand[2], productDemand[3]);
+                
+                negotiationResults.clear();
+                finishedCounter = 0;
+                
+                myAgent.addBehaviour(new RequestProductBundles());
+                myAgent.addBehaviour(new StartNegotiations());
+            } else {
+                block();
             }
-
-            String productList = msg.getContent();
-            logger.info("CA: Received task. Products required: {}", productList);
-            // Constrói o vetor de demanda (ex: P1,P2,P3,P4 -> [1,1,1,1])
-            productDemand = new int[productList.split(",").length];
-            for (int i = 0; i < productDemand.length; i++) {
-                productDemand[i] = 1;
-            }
-            logger.debug("CA: Product demand set to length {}.", productDemand.length);
         }
     }
 
@@ -128,7 +144,10 @@ public class CoordinatorAgent extends Agent {
     private class StartNegotiations extends OneShotBehaviour {
         public void action() {
             logger.info("CA: Preparation complete. Starting negotiation orchestration...");
-            // Simula a descoberta de fornecedores
+            
+            finishedCounter = 0;
+            negotiationResults.clear();
+            
             sellerAgents = new ArrayList<>();
             sellerAgents.add(new AID("s1", AID.ISLOCALNAME));
             sellerAgents.add(new AID("s2", AID.ISLOCALNAME));
@@ -137,7 +156,7 @@ public class CoordinatorAgent extends Agent {
             for (AID seller : sellerAgents) {
                 createBuyerFor(seller);
             }
-            // Adiciona o comportamento que ouve os resultados
+            
             myAgent.addBehaviour(new WaitForResults());
         }
     }
@@ -150,20 +169,13 @@ public class CoordinatorAgent extends Agent {
      * @param sellerAgent O AID do Vendedor com quem o BA deve negociar.
      */
     private void createBuyerFor(AID sellerAgent) {
-        String buyerName = "buyer_for_" + sellerAgent.getLocalName();
+        String buyerName = "buyer_for_" + sellerAgent.getLocalName() + "_" + System.currentTimeMillis();
         logger.info("CA: Creating {} to negotiate with {}", buyerName, sellerAgent.getLocalName());
 
         try {
-            // TODO (Simplificação de Arquitetura): O CA deveria configurar a estratégia do BA.
-            // O artigo afirma que o CA deve "Configurar [as] estratégias de negociação dos BAs
-            // para diferentes fornecedores e diferentes pacotes de produtos".
-            // Atualmente, estamos passando apenas os AIDs. A implementação correta
-            // passaria também a lista 'preferredBundles' e, potencialmente,
-            // estratégias (gamas/betas) específicas para este 'sellerAgent'.
             Object[] args = new Object[]{
-                    sellerAgent,    // Argumento 0: AID do Vendedor
-                    getAID(),       // Argumento 1: AID do Coordenador
-                    // TODO: Argumento 2: preferredBundles (a lista de pacotes)
+                    sellerAgent,
+                    getAID(),
             };
 
             AgentController buyerController = getContainerController().createNewAgent(
@@ -184,7 +196,7 @@ public class CoordinatorAgent extends Agent {
      */
     private class WaitForResults extends TickerBehaviour {
         public WaitForResults() {
-            super(CoordinatorAgent.this, 1000); // Verifica a cada 1 segundo
+            super(CoordinatorAgent.this, 1000);
         }
 
         protected void onTick() {
@@ -197,15 +209,12 @@ public class CoordinatorAgent extends Agent {
             if (msg != null) {
                 finishedCounter++;
                 try {
-                    // TODO (Simplificação): O 'content' pode ser UMA NegotiationResult
-                    // ou uma LISTA<NegotiationResult>. O código atual só trata de UMA.
                     Object content = msg.getContentObject();
                     if (content instanceof NegotiationResult) {
                         NegotiationResult result = (NegotiationResult) content;
                         negotiationResults.add(result);
                         logger.info("CA: Result received from {} -> {}", msg.getSender().getLocalName(), result);
                     } else {
-                        // Trata falhas (ex: "NegotiationFailed" ou timeout)
                         logger.info("CA: Notification received from {} -> {}", msg.getSender().getLocalName(), msg.getContent());
                     }
                 } catch (UnreadableException e) {
@@ -213,14 +222,11 @@ public class CoordinatorAgent extends Agent {
                 }
             }
 
-            // Quando todos os BAs (um por SA) tiverem respondido
             if (finishedCounter >= (sellerAgents == null ? 0 : sellerAgents.size())) {
                 logger.info("--- CA: All negotiations concluded. Determining winners... ---");
 
-                // Aciona o WDS com todos os lances finais coletados
                 List<NegotiationResult> optimalSolution = wds.solveWDPWithBranchAndBound(negotiationResults, productDemand);
 
-                // Imprime a solução final
                 logger.info("\n--- OPTIMAL SOLUTION FOUND ---");
                 if (optimalSolution == null || optimalSolution.isEmpty()) {
                     logger.info("No combination of bids could satisfy the demand.");
@@ -233,8 +239,10 @@ public class CoordinatorAgent extends Agent {
                     logger.info("Total Maximized Utility: {:.3f}", totalUtility);
                 }
 
-                stop(); // Para o TickerBehaviour
-                // myAgent.doDelete(); // Opcional: desliga o CA
+                negotiationResults.clear();
+                finishedCounter = 0;
+                
+                stop();
             }
         }
     }
