@@ -2,44 +2,79 @@ package mas.agents;
 
 import jade.core.AID;
 import jade.core.Agent;
-import jade.core.behaviours.OneShotBehaviour;
-import jade.core.behaviours.WakerBehaviour;
+import jade.core.behaviours.CyclicBehaviour;
+import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
+import jade.lang.acl.MessageTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class TaskDecomposerAgent extends Agent {
+import java.util.Random;
 
+public class TaskDecomposerAgent extends Agent {
     private static final Logger logger = LoggerFactory.getLogger(TaskDecomposerAgent.class);
+    private Random random = new Random();
+    private int currentDemandScenario = 0;
+    
+    private final String[][] DEMAND_SCENARIOS = {
+        {"P1,P2,P3,P4"},
+        {"P1,P2"},
+        {"P1,P3"},
+        {"P2,P4"},
+        {"P1,P1,P2"}  
+    };
 
     protected void setup() {
-        logger.info("TDA {} setup started.", getAID().getName());
-        logger.info("TDA {} is ready.", getAID().getName());
+        logger.info("Dynamic TDA {} setup started.", getAID().getName());
 
-        // Adiciona um comportamento que espera 30 segundos antes de iniciar todo o processo
-        logger.debug("TDA: Scheduling start of process in 30000 ms for agent {}.", getAID().getName());
-        addBehaviour(new WakerBehaviour(this, 30000) {
-            protected void onWake() {
-                logger.info("TDA: WakerBehaviour triggered for agent {}.", myAgent.getAID().getName());
-                // O comportamento de enviar a requisição é adicionado AQUI, após o atraso
-                myAgent.addBehaviour(new SendRequestBehaviour());
+        addBehaviour(new TickerBehaviour(this, 10000) {
+            protected void onTick() {
+                sendCurrentDemand();
+            }
+        });
+
+        addBehaviour(new TickerBehaviour(this, 45000) {
+            protected void onTick() {
+                changeDemandScenario();
+                sendCurrentDemand();
+            }
+        });
+
+        addBehaviour(new CyclicBehaviour() {
+            public void action() {
+                ACLMessage msg = receive(MessageTemplate.MatchPerformative(ACLMessage.REQUEST));
+                if (msg != null && "URGENT_DEMAND_CHANGE".equals(msg.getContent())) {
+                    logger.info("TDA: Received urgent demand change request");
+                    changeDemandScenario();
+                    sendCurrentDemand();
+                } else {
+                    block();
+                }
             }
         });
     }
 
-    private static class SendRequestBehaviour extends OneShotBehaviour {
+    private void changeDemandScenario() {
+        int newScenario;
+        do {
+            newScenario = random.nextInt(DEMAND_SCENARIOS.length);
+        } while (newScenario == currentDemandScenario && DEMAND_SCENARIOS.length > 1);
+        
+        currentDemandScenario = newScenario;
+        logger.info("TDA: Changed to demand scenario {}: {}", currentDemandScenario, 
+                   DEMAND_SCENARIOS[currentDemandScenario][0]);
+    }
 
-        public void action() {
-            logger.info("TDA: Woke up. Preparing to send product requirements to Coordinator Agent.");
+    private void sendCurrentDemand() {
+        String demand = DEMAND_SCENARIOS[currentDemandScenario][0];
+                System.out.println("🎯 ===== TDA SENDING DYNAMIC DEMAND: " + demand + " =====");
+        logger.info("🎯 TDA SENDING DYNAMIC DEMAND: {}", demand);
 
-            ACLMessage msg = new ACLMessage(ACLMessage.REQUEST);
-            msg.addReceiver(new AID("ca", AID.ISLOCALNAME));
-            msg.setContent("P1,P2,P3,P4");
-            msg.setProtocol("define-task-protocol");
+        ACLMessage msg = new ACLMessage(ACLMessage.REQUEST);
+        msg.addReceiver(new AID("ca", AID.ISLOCALNAME));
+        msg.setContent(demand);
+        msg.setProtocol("define-task-protocol");
 
-            logger.debug("TDA: Prepared ACLMessage to coordinator with content='{}' and protocol='{}'.", msg.getContent(), msg.getProtocol());
-            myAgent.send(msg);
-            logger.info("TDA: Request sent to Coordinator Agent (local name: ca) from agent {}.", myAgent.getAID().getName());
-        }
+        send(msg);
     }
 }
